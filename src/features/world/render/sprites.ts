@@ -3,6 +3,8 @@ import type { SpriteKey } from '../engine/types';
 // Cada letra é uma cor da paleta SPAL, "." é transparente
 export const SPRITES: Record<SpriteKey, string[]> = {
   casa: ['...R...', '..RrR..', '.RrrrR.', 'RrrrrrR', '.wwwww.', '.wdwww.', '.wdwww.'],
+  // Provisório: casa de dois andares. O protótipo não usa; é do novo sistema de crescimento.
+  casa_upgrade: ['...R...', '..RrR..', '.RrrrR.', 'RrrrrrR', '.wwwww.', '.wdwdw.', '.wwwww.', '.wdwdw.', '.wwdww.'],
   torre: ['o.o.o', 'ooooo', '.ooo.', '.oko.', '.ooo.', '.ooo.', '.odo.'],
   observatorio: ['....s..', '..ggg..', '.ggggg.', '.wwwww.', '.wwdww.', '.wwdww.'],
   mina: ['.bbbbb.', 'bkkkkkb', 'bkkkkkb', 'bkkkkkb', 'ooooooo'],

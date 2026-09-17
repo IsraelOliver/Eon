@@ -25,6 +25,12 @@ export const REGRAS = {
   aguaRasa: 2, // distância da terra que ainda conta como água rasa
 };
 
+/** Faixa permitida para o nível do mar no modo desenvolvedor (REGRAS continua sendo o padrão). */
+export const FAIXA_NIVEL_MAR = { min: 0.3, max: 0.55, passo: 0.01 };
+
+/** Sementes válidas. */
+export const FAIXA_SEMENTE = { min: 1, max: 999999 };
+
 export const NOMES: Record<TileType, string> = {
   oceano: 'Oceano profundo',
   raso: 'Oceano raso',

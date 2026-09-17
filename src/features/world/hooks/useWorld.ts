@@ -2,26 +2,33 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 
 import { gerarMundo } from '../engine/generate';
+import { descreverTile } from '../engine/inspect';
 import { mulberry32 } from '../engine/noise';
 import { aprender, contarPorTema, esquecer, revisar, semear } from '../engine/placement';
+import { FAIXA_NIVEL_MAR, FAIXA_SEMENTE, REGRAS } from '../engine/rules';
 import { CHAVES_TEMAS, TEMAS } from '../engine/themes';
 import type { Element, Rng, ThemeKey, World } from '../engine/types';
-import { ART_H, ART_W, desenharElementos, desenharTerreno } from '../render/buildPixels';
+import { ART, ART_H, ART_W, desenharElementos, desenharTerreno } from '../render/buildPixels';
+import { montarLegenda } from '../render/legend';
 
 const DURACAO_BRILHO = 700; // ms
 
 /** idMensagem muda a cada ação, para o aviso reaparecer mesmo com texto repetido. */
 type Estado = { mundo: World; elementos: Element[]; mensagem: string; idMensagem: number };
 
-function criarEstado(rng: Rng, idMensagem: number): Estado {
-  const mundo = gerarMundo(1 + Math.floor(Math.random() * 99999));
+function sementeAleatoria(): number {
+  return 1 + Math.floor(Math.random() * 99999);
+}
+
+function criarEstado(rng: Rng, idMensagem: number, seed: number, nivelMar: number): Estado {
+  const mundo = gerarMundo(seed, nivelMar);
   return { mundo, idMensagem, ...semear(mundo, rng) };
 }
 
 /** Liga o engine (regras) ao desenho e aos botões. */
 export function useWorld() {
   const [rng] = useState(() => mulberry32(Date.now() | 0));
-  const [estado, setEstado] = useState(() => criarEstado(rng, 0));
+  const [estado, setEstado] = useState(() => criarEstado(rng, 0, sementeAleatoria(), REGRAS.nivelMar));
   const [brilho, setBrilho] = useState(0);
   const animacao = useRef<number | null>(null);
   const reduzirMovimento = useReducedMotion();
@@ -30,6 +37,7 @@ export function useWorld() {
 
   const terreno = useMemo(() => desenharTerreno(mundo), [mundo]);
   const pixels = useMemo(() => desenharElementos(terreno, elementos, brilho), [terreno, elementos, brilho]);
+  const legenda = useMemo(() => montarLegenda(), []);
   const contagem = contarPorTema(elementos);
   const temas = CHAVES_TEMAS.map((chave) => ({ chave, nome: TEMAS[chave].nome, quantidade: contagem[chave] }));
 
@@ -61,6 +69,12 @@ export function useWorld() {
     animacao.current = requestAnimationFrame(passo);
   }
 
+  function recriar(seed: number, nivelMar: number) {
+    pararBrilho();
+    setBrilho(0);
+    setEstado(criarEstado(rng, idMensagem + 1, seed, nivelMar));
+  }
+
   return {
     pixels,
     largura: ART_W,
@@ -68,6 +82,10 @@ export function useWorld() {
     mensagem,
     idMensagem,
     temas,
+    seed: mundo.seed,
+    nivelMar: mundo.nivelMar,
+    faixaNivelMar: FAIXA_NIVEL_MAR,
+    legenda,
     aprender(chave: ThemeKey) {
       setEstado({ mundo, idMensagem: idMensagem + 1, ...aprender(mundo, elementos, chave, rng) });
     },
@@ -81,10 +99,21 @@ export function useWorld() {
       if (reduzirMovimento) apagarBrilho();
       else animarBrilho();
     },
+    /** Semente aleatória, mantendo o nível do mar atual. */
     novoMundo() {
-      pararBrilho();
-      setBrilho(0);
-      setEstado(criarEstado(rng, idMensagem + 1));
+      recriar(sementeAleatoria(), mundo.nivelMar);
+    },
+    gerarComSemente(seed: number) {
+      const s = Math.min(FAIXA_SEMENTE.max, Math.max(FAIXA_SEMENTE.min, Math.floor(seed) || 1));
+      recriar(s, mundo.nivelMar);
+    },
+    mudarNivelMar(nivelMar: number) {
+      recriar(mundo.seed, nivelMar);
+    },
+    /** Recebe um ponto em pixels de arte e mostra no aviso o que há naquele tile. */
+    inspecionar(artX: number, artY: number) {
+      const texto = descreverTile(mundo, Math.floor(artX / ART), Math.floor(artY / ART));
+      if (texto) setEstado({ ...estado, mensagem: texto, idMensagem: idMensagem + 1 });
     },
   };
 }

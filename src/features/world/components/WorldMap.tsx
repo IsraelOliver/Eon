@@ -3,7 +3,7 @@ import {
 } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
 import { StyleSheet } from 'react-native';
-import { GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import { useMapCamera } from '../hooks/useMapCamera';
 
@@ -12,14 +12,24 @@ type Props = {
   pixels: Uint8Array;
   largura: number;
   altura: number;
+  /** Toque longo: recebe o ponto em pixels de arte. Sem essa prop, o toque longo fica desligado. */
+  onLongPress?: (artX: number, artY: number) => void;
 };
 
 // "Nearest" = cada pixel vira um quadrado ao ampliar, sem suavização, em qualquer zoom
 const NITIDO = { filter: FilterMode.Nearest, mipmap: MipmapMode.None };
 
 /** Mapa em tela cheia. Arrastar e pinça só mudam a transformação do Group. */
-export function WorldMap({ pixels, largura, altura }: Props) {
-  const { gesto, transformacao } = useMapCamera(largura, altura);
+export function WorldMap({ pixels, largura, altura, onLongPress }: Props) {
+  const { gesto, transformacao, paraMapa } = useMapCamera(largura, altura);
+
+  const toqueLongo = Gesture.LongPress()
+    .enabled(onLongPress !== undefined)
+    .runOnJS(true)
+    .onStart((e) => {
+      const p = paraMapa(e.x, e.y);
+      onLongPress?.(p.x, p.y);
+    });
 
   const imagem = useMemo(
     () =>
@@ -32,7 +42,7 @@ export function WorldMap({ pixels, largura, altura }: Props) {
   );
 
   return (
-    <GestureDetector gesture={gesto}>
+    <GestureDetector gesture={Gesture.Simultaneous(gesto, toqueLongo)}>
       <Canvas style={StyleSheet.absoluteFill} accessibilityLabel="Mapa gerado proceduralmente">
         <Group transform={transformacao}>
           <Image image={imagem} x={0} y={0} width={largura} height={altura} fit="fill" sampling={NITIDO} />

@@ -104,5 +104,11 @@ export function useMapCamera(largura: number, altura: number) {
     { scale: escala.value },
   ]);
 
-  return { gesto, transformacao };
+  /** Converte um ponto da tela para pixels de arte do mapa (desfaz a transformação). */
+  const paraMapa = (px: number, py: number) => ({
+    x: (px - x.get()) / escala.get(),
+    y: (py - y.get()) / escala.get(),
+  });
+
+  return { gesto, transformacao, paraMapa };
 }

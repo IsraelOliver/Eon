@@ -88,11 +88,12 @@ function marcarOceano(agua: Uint8Array): Uint8Array {
   return oceano;
 }
 
-export function gerarMundo(seed: number): World {
+/** nivelMar vem como parâmetro (o modo desenvolvedor muda); o padrão é o das REGRAS. */
+export function gerarMundo(seed: number, nivelMar: number = REGRAS.nivelMar): World {
   const { alt, umi, det } = gerarRuidos(seed);
   formarIlha(alt);
 
-  const mar = REGRAS.nivelMar;
+  const mar = nivelMar;
   const agua = new Uint8Array(N);
   for (let i = 0; i < N; i++) agua[i] = alt[i] < mar ? 1 : 0;
 
@@ -119,6 +120,7 @@ export function gerarMundo(seed: number): World {
 
   return {
     seed,
+    nivelMar,
     alt,
     umi,
     agua,

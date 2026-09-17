@@ -2,10 +2,14 @@ export type Biome = 'deserto' | 'savana' | 'planicie' | 'floresta' | 'tundra';
 
 export type TileType = Biome | 'oceano' | 'raso' | 'lago' | 'praia' | 'montanha' | 'neve';
 
-export type ThemeKey = 'astronomia' | 'historia' | 'geologia' | 'natureza';
+import type { ThemeKey } from '../../../shared/domain/themeKey';
+
+export type { ThemeKey };
 
 export type SpriteKey =
   | 'casa'
+  /** Construção mais desenvolvida (representação provisória de infraestrutura). */
+  | 'casa_upgrade'
   | 'torre'
   | 'observatorio'
   | 'mina'
@@ -21,6 +25,7 @@ export type Rng = () => number;
 /** O mundo gerado. Arrays indexados por y * W + x. */
 export interface World {
   seed: number;
+  nivelMar: number;
   alt: Float32Array;
   umi: Float32Array;
   agua: Uint8Array;
@@ -69,3 +74,38 @@ export interface Resultado {
   elementos: Element[];
   mensagem: string;
 }
+
+/** O que o mundo pode tentar desenvolver (sem dizer onde nem com qual sprite). */
+export type WorldGrowthKind =
+  | 'crescerVegetacao'
+  | 'desenvolverPovoamento'
+  | 'melhorarInfraestrutura'
+  | 'ampliarExploracao'
+  | 'desenvolverObservacao';
+
+/** Intenção abstrata de crescimento. Ex.: { tipo: 'crescerVegetacao', intensidade: 2 }. */
+export interface WorldGrowthEvent {
+  tipo: WorldGrowthKind;
+  intensidade: number;
+}
+
+/** Algo que já ocupa um ponto do mapa, visto pelo novo sistema de crescimento. */
+export interface WorldOccupant {
+  evento: WorldGrowthKind;
+  x: number;
+  y: number;
+}
+
+/** Onde e como um evento vai aparecer. (x, y) é a âncora: a base do sprite, um tile só. */
+export interface WorldGrowthPlacement {
+  evento: WorldGrowthKind;
+  tipo: SpriteKey;
+  x: number;
+  y: number;
+  /** Guardada para progressão futura; hoje não muda a colocação. */
+  intensidade: number;
+}
+
+export type WorldGrowthPlacementResult =
+  | { status: 'colocado'; colocacao: WorldGrowthPlacement }
+  | { status: 'semLugar'; evento: WorldGrowthKind; motivo: string };
