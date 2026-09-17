@@ -1,20 +1,17 @@
 // =====================================================================
-// DESENHO — monta o buffer RGBA (4 bytes por pixel) do mapa
-// Separado em duas etapas: o terreno só muda quando o mundo muda,
-// os elementos são redesenhados por cima de uma cópia dele.
+// TERRENO EM PIXELS — monta o buffer RGBA (4 bytes por pixel) do mapa.
+// Só depende do mundo: é calculado uma vez por mundo e memoizado.
+// Os sprites NÃO entram aqui; são desenhados à parte (spriteBuffers + Skia).
 // =====================================================================
 import { hash2 } from '../engine/noise';
 import { H, W } from '../engine/rules';
-import type { Element, World } from '../engine/types';
-import {
-  BORDA_AREIA, COR, LINHA_COSTA, LUZ, NEVOA, ONDA, PINTA, SPAL, TINTA, criarPaleta, mix, type RGB,
-} from './palette';
-import { SPRITES } from './sprites';
+import type { World } from '../engine/types';
+import { BORDA_AREIA, COR, LINHA_COSTA, ONDA, PINTA, criarPaleta, type RGB } from './palette';
 
 /** Cada tile vira ART x ART pixels de arte (para os sprites terem detalhe). */
 export const ART = 3;
-export const ART_W = W * ART; // 450
-export const ART_H = H * ART; // 300
+export const ART_W = W * ART;
+export const ART_H = H * ART;
 
 function put(px: Uint8Array, ax: number, ay: number, c: RGB): void {
   if (ax < 0 || ay < 0 || ax >= ART_W || ay >= ART_H) return;
@@ -53,49 +50,6 @@ export function desenharTerreno(mundo: World, pergaminho = false): Uint8Array {
           else if (t === 'oceano' && sy === 1 && hash2(x, y, mundo.seed + 9) < 0.02) cor = ONDA;
           put(px, ax, ay, P(cor));
         }
-      }
-    }
-  }
-  return px;
-}
-
-/** brilho: 0 a 1, intensidade do brilho dos elementos recém-revisados. */
-export function desenharElementos(
-  terreno: Uint8Array,
-  elementos: Element[],
-  brilho: number,
-  pergaminho = false,
-): Uint8Array {
-  const px = terreno.slice();
-  const P = criarPaleta(pergaminho);
-  const tinta = P(TINTA);
-  const nevoa = P(NEVOA);
-
-  for (const el of elementos) {
-    const rows = SPRITES[el.tipo];
-    const h = rows.length;
-    const w = rows[0].length;
-    const x0 = el.x * ART + 1 - Math.floor(w / 2);
-    const y0 = el.y * ART + 2 - (h - 1);
-    const cheio = (r: number, c: number) => r >= 0 && c >= 0 && r < h && c < w && rows[r][c] !== '.';
-
-    // contorno de 1 pixel em volta do sprite
-    const contorno = el.desbotado ? mix(tinta, nevoa, 0.6) : tinta;
-    for (let r = -1; r <= h; r++) {
-      for (let c = -1; c <= w; c++) {
-        if (cheio(r, c)) continue;
-        if (cheio(r - 1, c) || cheio(r + 1, c) || cheio(r, c - 1) || cheio(r, c + 1)) put(px, x0 + c, y0 + r, contorno);
-      }
-    }
-
-    for (let r = 0; r < h; r++) {
-      for (let c = 0; c < w; c++) {
-        const ch = rows[r][c];
-        if (ch === '.') continue;
-        let cor = P(SPAL[ch]);
-        if (el.desbotado) cor = mix(cor, nevoa, 0.7);
-        if (el.brilha) cor = mix(cor, LUZ, brilho * 0.8);
-        put(px, x0 + c, y0 + r, cor);
       }
     }
   }

@@ -4,8 +4,8 @@
 import type { Biome, TileType } from './types';
 
 /** Tamanho do mundo em tiles. */
-export const W = 150;
-export const H = 100;
+export const W = 300;
+export const H = 200;
 
 export const REGRAS = {
   nivelMar: 0.42, // altitude abaixo disso é água

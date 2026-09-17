@@ -15,7 +15,9 @@ export default function MapScreen() {
   return (
     <View style={styles.tela}>
       <WorldMap
-        pixels={world.pixels}
+        terreno={world.terreno}
+        elementos={world.elementosParaDesenho}
+        brilho={world.brilho}
         largura={world.largura}
         altura={world.altura}
         onLongPress={dev.ativo ? world.inspecionar : undefined}
@@ -32,6 +34,8 @@ export default function MapScreen() {
               faixaNivelMar={world.faixaNivelMar}
               onGerarComSemente={world.gerarComSemente}
               onMudarNivelMar={world.mudarNivelMar}
+              crescimentos={world.crescimentos}
+              onCrescer={world.aplicarCrescimentoDev}
             />
             <BiomeLegend itens={world.legenda} />
           </>

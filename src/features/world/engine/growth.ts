@@ -6,6 +6,17 @@
 import type { InfluenceKey, KnowledgeInfluence } from '../../../shared/domain/influence';
 import type { WorldGrowthEvent, WorldGrowthKind } from './types';
 
+/** Nome curto de cada tipo de crescimento, para mensagens e botões. */
+export const NOMES_DE_CRESCIMENTO: Record<WorldGrowthKind, string> = {
+  crescerVegetacao: 'Vegetação',
+  desenvolverPovoamento: 'Povoamento',
+  melhorarInfraestrutura: 'Infraestrutura',
+  ampliarExploracao: 'Exploração',
+  desenvolverObservacao: 'Observação',
+};
+
+export const CHAVES_DE_CRESCIMENTO = Object.keys(NOMES_DE_CRESCIMENTO) as WorldGrowthKind[];
+
 /** Record completo: uma InfluenceKey nova não compila até ganhar um destino aqui. */
 const EVENTO_POR_INFLUENCIA: Record<InfluenceKey, WorldGrowthKind> = {
   vegetacao: 'crescerVegetacao',

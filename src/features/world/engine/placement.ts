@@ -89,7 +89,7 @@ export function aprender(
 /** O mundo nunca começa 100% vazio: três plantas protegidas. */
 export function semear(mundo: World, rng: Rng): Resultado {
   let elementos: Element[] = [];
-  for (let k = 0; k < 3; k++) elementos = aprender(mundo, elementos, 'historia', rng, true).elementos;
+  for (let k = 0; k < 3; k++) elementos = aprender(mundo, elementos, 'natureza', rng, true).elementos;
   return { elementos, mensagem: 'Mundo novo. Três plantas já nasceram para ele não começar vazio.' };
 }
 

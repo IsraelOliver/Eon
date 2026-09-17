@@ -20,21 +20,27 @@ src/
         inspect.ts           → descreverTile(): bioma, altitude e umidade de um tile
         growth.ts            → gerarEventosDeCrescimento(): influências → eventos abstratos
         growthPlacement.ts   → colocarCrescimento(): evento → lugar válido + sprite
+        growthElements.ts    → aplicarEventosDeCrescimento(): eventos → GrowthElement[]
       render/                → transforma o mundo em pixels (sem React)
         palette.ts           → cores do terreno, paleta dos sprites, modo pergaminho
         sprites.ts           → desenhos dos sprites em texto
-        buildPixels.ts       → buffer RGBA 450x300: terreno + elementos
+        buildPixels.ts       → buffer RGBA do terreno (só depende do mundo)
+        spriteBuffers.ts     → (fallback) RGBA de um sprite desenhado em caracteres
+        spriteAssets.ts      → SpriteKey → PNG (único lugar dos require)
         legend.ts            → nome + cor de cada tipo de tile (para a legenda)
+        renderElements.ts    → RenderElement + combinarParaDesenho(): junta legado e crescimento
       components/            → peças visuais (React Native + Skia)
         WorldMap.tsx         → mapa em tela cheia (Skia), gestos de câmera, toque longo
+        WorldSprites.tsx     → desenha os sprites (PNG ou fallback) sobre o terreno
         ActionToast.tsx      → aviso que some sozinho (posição topo/baixo e duração por props)
         LearnMenu.tsx        → botão de menu (inferior esquerdo) + janela "Aprender"
         ThemeButtons.tsx     → botões dos 4 temas com contador
-        WorldDevTools.tsx    → (dev) campo de semente + slider de nível do mar
+        WorldDevTools.tsx    → (dev) semente, nível do mar e botões de crescimento
         BiomeLegend.tsx      → (dev) legenda das cores do mapa
       hooks/
         useWorld.ts          → estado do mundo e elementos; liga engine, render e componentes
         useMapCamera.ts      → câmera: arrastar, pinça, inércia, limites, tela→mapa
+        useSpriteImages.ts   → carrega os PNGs dos sprites (useImage, ordem fixa)
     learning/                → aprendizagem: curiosidades e perfil de conhecimento
       engine/                → lógica pura (sem React, React Native ou Skia)
         types.ts             → Curiosity, CuriositySource, Tag, KnowledgeProfile,
@@ -63,8 +69,9 @@ src/
 ```
 toque no botão → componente chama função recebida por props
               → useWorld chama o engine (função pura) → novo estado
-              → render/buildPixels gera o buffer RGBA
-              → WorldMap transforma o buffer em imagem Skia e desenha
+              → terreno: buildPixels gera o buffer RGBA (memoizado por mundo)
+                sprites: lista de RenderElement (leve, muda a cada elemento)
+              → WorldMap desenha a imagem do terreno + WorldSprites por cima
 ```
 
 ## Regras de código
@@ -111,6 +118,8 @@ toque no botão → componente chama função recebida por props
 | Adicionar um tipo de evento de crescimento | `world/engine/types.ts` (`WorldGrowthKind`) + regra em `growthPlacement.ts` |
 | Mudar onde um evento pode surgir        | `world/engine/growthPlacement.ts` (`REGRAS_CRESCIMENTO`) |
 | Mudar a distância mínima entre elementos | `world/engine/growthPlacement.ts` (`DISTANCIA_MINIMA`) |
+| Mudar como uma sequência de eventos é aplicada | `world/engine/growthElements.ts` |
+| Mudar os botões/nomes de crescimento    | `world/engine/growth.ts` (`NOMES_DE_CRESCIMENTO`) |
 
 ## Aprendizagem (learning)
 
@@ -180,11 +189,49 @@ nada do que recebe.
   O desenho continua por caracteres em `render/sprites.ts`, que ganhou
   `casa_upgrade` (o protótipo nunca pede essa chave, então o mapa atual não mudou).
 
+## Elementos de crescimento (world/engine/growthElements.ts)
+
+- **`GrowthElement`** (`{ evento, tipo, x, y, intensidade }`) é o elemento do novo
+  sistema. **Não tem `ThemeKey`**: o que ele é vem do evento, não do tema estudado.
+  O `Element` legado (com `tema`) continua sendo só do protótipo. Nenhum mapeamento
+  do tipo "povoamento = história" existe, justamente para não reacoplar o
+  crescimento visual aos temas educacionais.
+- **`criarElementoDeCrescimento(colocacao)`**: colocação → elemento, sem alterar a
+  colocação.
+- **`aplicarEventosDeCrescimento(mundo, elementosAtuais, eventos, rng)`**: processa
+  os eventos na ordem, chama `colocarCrescimento()` para cada um e devolve
+  `GrowthResult`:
+  - `elementos`: a lista final (antigos + novos), nova; a recebida não muda;
+  - `adicionados`: só os criados agora;
+  - `semLugar`: os eventos que não acharam lugar (não interrompem os seguintes).
+- **Ocupação em cadeia:** cada elemento colocado vira `WorldOccupant`
+  (`{ evento, x, y }`) na hora, então o evento seguinte já o enxerga. É isso que faz
+  a 2ª casa nascer perto da 1ª e o `casa_upgrade` nascer perto do povoamento.
+- Um evento gera **no máximo um** elemento. `intensidade` é só metadado guardado.
+
+## Dois sistemas no mesmo mapa (temporário)
+
+- **No estado (`useWorld`) são duas listas separadas**, sem conversão entre elas:
+  `elementos: Element[]` (protótipo, com `tema`) e `crescimento: GrowthElement[]`
+  (novo, sem tema). Mundo novo, semente nova ou nível do mar novo zeram a lista de
+  crescimento; `semear()` continua criando os elementos iniciais do protótipo.
+- **A união acontece só no render.** `combinarParaDesenho()` devolve
+  `RenderElement[]` (`tipo`, `x`, `y`, `desbotado?`, `brilha?`) ordenado por `y`,
+  para quem está mais abaixo ser desenhado por cima. A ordem guardada no engine não
+  muda, e `WorldSprites` só conhece esse contrato visual. Elementos de crescimento
+  ainda não desbotam nem brilham.
+- **Teste manual:** no modo desenvolvedor, a seção "Crescimento" tem um botão por
+  `WorldGrowthKind`. Cada toque chama `aplicarCrescimentoDev(tipo)`, que aplica um
+  evento de intensidade 1 e escreve no aviso se cresceu ou se não achou lugar.
+  Os nomes dos botões vêm de `NOMES_DE_CRESCIMENTO` (`engine/growth.ts`).
+- **Fronteira mantida:** `settings` continua recebendo `ferramentasDev` como
+  `ReactNode`; os botões são do `world`, e `app/index.tsx` liga hook e componente.
+
 - **Coexistência temporária:** `themes.ts` e `placement.ts` são o protótipo antigo
   (tema → sprite → lugar) e continuam ligados ao `useWorld`. O novo caminho
-  (`growth.ts` → `growthPlacement.ts`) ainda **não** está ligado a nada: falta
-  aplicar as colocações ao estado do mundo e conectar ao hook, ao learning e à
-  tela. Quando o novo loop estiver completo, o protótipo será substituído.
+  (`growth.ts` → `growthPlacement.ts` → `growthElements.ts`) fecha a parte pura do
+  engine, mas ainda **não** está ligado a nada: falta desenhar `GrowthElement` e
+  conectar ao hook, ao learning e à tela. Quando o novo loop estiver completo, o protótipo será substituído.
 
 ## Interface sobre o mapa
 
@@ -222,12 +269,40 @@ nada do que recebe.
 - "Novo mundo" e "Gerar com esta semente" mantêm o nível do mar atual; o slider
   mantém a semente atual.
 
-## Mapa nítido
+## Mapa nítido e barato de atualizar
 
-O mundo tem 150x100 tiles; cada tile vira 3x3 pixels de arte (450x300).
-`WorldMap` cria uma `SkImage` a partir do buffer e a desenha com
-`sampling={{ filter: FilterMode.Nearest }}`, então cada pixel vira um quadrado
-sem suavização em qualquer zoom.
+Cada tile vira `ART` x `ART` (3x3) pixels de arte; com `W`/`H` de `rules.ts` isso dá
+o tamanho do buffer. Tudo é desenhado com
+`sampling={{ filter: FilterMode.Nearest }}`, então cada pixel vira um quadrado sem
+suavização em qualquer zoom.
+
+**Terreno e sprites são separados de propósito:**
+
+| Camada | Onde nasce | Quando é refeita | Tamanho |
+|---|---|---|---|
+| Terreno | `buildPixels.desenharTerreno` → `useMemo([mundo])` | só quando o mundo muda | alguns MB |
+| Imagem do terreno | `useMemo([terreno])` no `WorldMap` | idem | uma `SkImage` |
+| Sprites | PNG (`spriteAssets` + `useSpriteImages`), ou `spriteBuffers` no fallback | PNG: uma vez ao abrir o app | alguns KB no total |
+
+Colocar um elemento **não** recria o buffer nem a imagem do terreno: só acrescenta
+um nó `<Image>` no Skia, dentro do mesmo `Group` que recebe a transformação da
+câmera.
+
+**Sprites:**
+
+- `arvore`, `pinheiro`, `cacto`, `acacia`, `casa`, `casa_upgrade` e `mina` usam os
+  PNGs de `assets/images/world/sprites/`, registrados em `render/spriteAssets.ts`
+  e carregados uma vez por `hooks/useSpriteImages.ts` (um `useImage` por arquivo,
+  em ordem fixa por causa da regra dos hooks).
+- `torre`, `observatorio` e `escavacao` ainda não têm PNG: continuam desenhados em
+  caracteres por `spriteBuffers.ts`, com cache por `tipo | desbotado | brilho`.
+  Para migrar um deles, basta acrescentar o arquivo, uma linha em `spriteAssets.ts`
+  e uma em `useSpriteImages.ts`.
+- **Âncora do PNG:** centro do tile na horizontal e base no pé do tile —
+  `x = x * ART + ART / 2 - largura / 2`, `y = y * ART + ART - altura`. Cada PNG é
+  desenhado no tamanho nativo, então sprites podem ter tamanhos diferentes.
+- Desbotado vira opacidade; o brilho da revisão vira um `ColorMatrix` que clareia.
+  (No fallback, esses dois efeitos continuam sendo pintados no próprio buffer.)
 
 ## Câmera (useMapCamera)
 

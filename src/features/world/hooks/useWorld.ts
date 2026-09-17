@@ -2,19 +2,30 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 
 import { gerarMundo } from '../engine/generate';
+import { CHAVES_DE_CRESCIMENTO, NOMES_DE_CRESCIMENTO } from '../engine/growth';
+import { aplicarEventosDeCrescimento } from '../engine/growthElements';
 import { descreverTile } from '../engine/inspect';
 import { mulberry32 } from '../engine/noise';
 import { aprender, contarPorTema, esquecer, revisar, semear } from '../engine/placement';
 import { FAIXA_NIVEL_MAR, FAIXA_SEMENTE, REGRAS } from '../engine/rules';
 import { CHAVES_TEMAS, TEMAS } from '../engine/themes';
-import type { Element, Rng, ThemeKey, World } from '../engine/types';
-import { ART, ART_H, ART_W, desenharElementos, desenharTerreno } from '../render/buildPixels';
+import type { Element, GrowthElement, Rng, ThemeKey, World, WorldGrowthKind } from '../engine/types';
+import { ART, ART_H, ART_W, desenharTerreno } from '../render/buildPixels';
 import { montarLegenda } from '../render/legend';
+import { combinarParaDesenho } from '../render/renderElements';
 
 const DURACAO_BRILHO = 700; // ms
 
 /** idMensagem muda a cada ação, para o aviso reaparecer mesmo com texto repetido. */
-type Estado = { mundo: World; elementos: Element[]; mensagem: string; idMensagem: number };
+type Estado = {
+  mundo: World;
+  /** Protótipo: elementos com tema, criados por aprender()/semear(). */
+  elementos: Element[];
+  /** Novo sistema: elementos sem tema, criados por eventos de crescimento. */
+  crescimento: GrowthElement[];
+  mensagem: string;
+  idMensagem: number;
+};
 
 function sementeAleatoria(): number {
   return 1 + Math.floor(Math.random() * 99999);
@@ -22,7 +33,8 @@ function sementeAleatoria(): number {
 
 function criarEstado(rng: Rng, idMensagem: number, seed: number, nivelMar: number): Estado {
   const mundo = gerarMundo(seed, nivelMar);
-  return { mundo, idMensagem, ...semear(mundo, rng) };
+  // mundo novo começa sem nenhum elemento de crescimento
+  return { mundo, idMensagem, crescimento: [], ...semear(mundo, rng) };
 }
 
 /** Liga o engine (regras) ao desenho e aos botões. */
@@ -33,10 +45,12 @@ export function useWorld() {
   const animacao = useRef<number | null>(null);
   const reduzirMovimento = useReducedMotion();
 
-  const { mundo, elementos, mensagem, idMensagem } = estado;
+  const { mundo, elementos, crescimento, mensagem, idMensagem } = estado;
 
+  // buffer pesado: só é refeito quando o mundo muda
   const terreno = useMemo(() => desenharTerreno(mundo), [mundo]);
-  const pixels = useMemo(() => desenharElementos(terreno, elementos, brilho), [terreno, elementos, brilho]);
+  // lista leve de sprites: muda a cada elemento novo, sem tocar no terreno
+  const paraDesenho = useMemo(() => combinarParaDesenho(elementos, crescimento), [elementos, crescimento]);
   const legenda = useMemo(() => montarLegenda(), []);
   const contagem = contarPorTema(elementos);
   const temas = CHAVES_TEMAS.map((chave) => ({ chave, nome: TEMAS[chave].nome, quantidade: contagem[chave] }));
@@ -76,7 +90,9 @@ export function useWorld() {
   }
 
   return {
-    pixels,
+    terreno,
+    elementosParaDesenho: paraDesenho,
+    brilho,
     largura: ART_W,
     altura: ART_H,
     mensagem,
@@ -87,14 +103,14 @@ export function useWorld() {
     faixaNivelMar: FAIXA_NIVEL_MAR,
     legenda,
     aprender(chave: ThemeKey) {
-      setEstado({ mundo, idMensagem: idMensagem + 1, ...aprender(mundo, elementos, chave, rng) });
+      setEstado({ ...estado, idMensagem: idMensagem + 1, ...aprender(mundo, elementos, chave, rng) });
     },
     esquecer() {
-      setEstado({ mundo, idMensagem: idMensagem + 1, ...esquecer(elementos, rng) });
+      setEstado({ ...estado, idMensagem: idMensagem + 1, ...esquecer(elementos, rng) });
     },
     revisar() {
       const r = revisar(elementos);
-      setEstado({ mundo, idMensagem: idMensagem + 1, ...r });
+      setEstado({ ...estado, idMensagem: idMensagem + 1, ...r });
       if (!r.elementos.some((e) => e.brilha)) return;
       if (reduzirMovimento) apagarBrilho();
       else animarBrilho();
@@ -109,6 +125,16 @@ export function useWorld() {
     },
     mudarNivelMar(nivelMar: number) {
       recriar(mundo.seed, nivelMar);
+    },
+    /** (dev) Tipos de crescimento disponíveis, com o nome para o botão. */
+    crescimentos: CHAVES_DE_CRESCIMENTO.map((tipo) => ({ tipo, nome: NOMES_DE_CRESCIMENTO[tipo] })),
+    /** (dev) Aplica um evento de intensidade 1 do novo sistema de crescimento. */
+    aplicarCrescimentoDev(tipo: WorldGrowthKind) {
+      const r = aplicarEventosDeCrescimento(mundo, crescimento, [{ tipo, intensidade: 1 }], rng);
+      const mensagem = r.adicionados.length
+        ? `${NOMES_DE_CRESCIMENTO[tipo]} cresceu no mundo.`
+        : 'Não foi encontrado um local válido para esse crescimento.';
+      setEstado({ ...estado, crescimento: r.elementos, mensagem, idMensagem: idMensagem + 1 });
     },
     /** Recebe um ponto em pixels de arte e mostra no aviso o que há naquele tile. */
     inspecionar(artX: number, artY: number) {

@@ -109,3 +109,27 @@ export interface WorldGrowthPlacement {
 export type WorldGrowthPlacementResult =
   | { status: 'colocado'; colocacao: WorldGrowthPlacement }
   | { status: 'semLugar'; evento: WorldGrowthKind; motivo: string };
+
+/**
+ * Elemento criado pelo novo sistema de crescimento.
+ * Não tem ThemeKey: o que ele é vem do evento, não do tema educacional.
+ * (O `Element` legado, com tema, continua sendo do protótipo.)
+ */
+export interface GrowthElement {
+  evento: WorldGrowthKind;
+  tipo: SpriteKey;
+  x: number;
+  y: number;
+  /** Metadado para progressão futura; um evento gera no máximo um elemento. */
+  intensidade: number;
+}
+
+/** Resultado de aplicar uma sequência de eventos de crescimento. */
+export interface GrowthResult {
+  /** Lista final: os que já existiam mais os novos. */
+  elementos: GrowthElement[];
+  /** Só os criados nesta execução, na ordem dos eventos. */
+  adicionados: GrowthElement[];
+  /** Eventos que não encontraram lugar, na ordem em que foram processados. */
+  semLugar: WorldGrowthKind[];
+}
