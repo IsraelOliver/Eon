@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapa do explorador (protótipo)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#dce8ea; --panel:#ffffff; --ink:#1c2a33; --muted:#51626d; --line:#b9cad0;
+  --sea:#2a6fd6; --focus:#e0a100;
+  --astro:#5b5fc7; --hist:#b5523b; --geo:#8a5a34; --nat:#3f6b3a;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1d2e; --panel:#172a40; --ink:#e6eef3; --muted:#9fb3c2; --line:#2c4560;
+    --astro:#8a8ef0; --hist:#e0806a; --geo:#c89464; --nat:#7fb46f;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1d2e; --panel:#172a40; --ink:#e6eef3; --muted:#9fb3c2; --line:#2c4560;
+  --astro:#8a8ef0; --hist:#e0806a; --geo:#c89464; --nat:#7fb46f;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Atkinson Hyperlegible",system-ui,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 18px 40px}
+h1{font-family:"Pixelify Sans",ui-monospace,monospace;font-weight:600;font-size:clamp(1.8rem,4vw,2.6rem);line-height:1.1;margin:0 0 6px}
+header p{margin:0 0 20px;color:var(--muted);max-width:62ch}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;align-items:start}
+@media (max-width:860px){.layout{grid-template-columns:1fr}}
+.stage{min-width:0}
+canvas{display:block;width:100%;height:auto;aspect-ratio:3/2;image-rendering:pixelated;image-rendering:crisp-edges;border:3px solid var(--ink);border-radius:4px;background:var(--sea);cursor:crosshair}
+.status{margin:8px 0 0;color:var(--muted);font-size:.9rem;min-height:1.5em}
+.log{margin:10px 0 0;padding:10px 12px;border-left:4px solid var(--ink);background:var(--panel);min-height:2.8em}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px}
+.panel h2{font-family:"Pixelify Sans",ui-monospace,monospace;font-weight:400;font-size:1.15rem;margin:18px 0 8px}
+.panel h2:first-child{margin-top:0}
+.themes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button{font:inherit;cursor:pointer;border-radius:4px;border:2px solid var(--ink);background:transparent;color:var(--ink);padding:8px 10px}
+button:hover{background:color-mix(in srgb,var(--ink) 8%,transparent)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.theme{border-color:var(--c);color:var(--ink);text-align:left;display:flex;justify-content:space-between;align-items:center;gap:6px}
+.theme::before{content:"";width:10px;height:10px;background:var(--c);flex:none}
+.theme span{flex:1}
+.theme b{font-family:"Pixelify Sans",ui-monospace,monospace;font-weight:400}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row button{flex:1}
+label{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:.95rem}
+input[type=number]{width:100px;font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink)}
+input[type=range]{flex:1}
+.legend{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-size:.88rem}
+.legend li{display:flex;align-items:center;gap:6px}
+.legend i{width:14px;height:14px;border:1px solid var(--ink);flex:none}
+.note{font-size:.85rem;color:var(--muted);margin:6px 0 0}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <h1>Mapa do explorador</h1>
+    <p>Protótipo: o mundo nasce vazio a partir de dois ruídos (altitude e umidade) e um terceiro para variar as praias. Cada curiosidade aprendida faz algo surgir, no lugar que as regras do tema escolherem.</p>
+  </header>
+  <div class="layout">
+    <section class="stage">
+      <canvas id="map" width="450" height="300" aria-label="Mapa gerado proceduralmente"></canvas>
+      <p id="hover" class="status">Passe o mouse no mapa para ver bioma, altitude e umidade de cada pixel.</p>
+      <p id="log" class="log" aria-live="polite"></p>
+    </section>
+    <aside class="panel">
+      <h2>Aprendi uma curiosidade de</h2>
+      <div class="themes" id="themes"></div>
+      <h2>Esquecimento</h2>
+      <div class="row">
+        <button id="forget">Ficar 3 dias sem revisar</button>
+        <button id="review">Revisar agora</button>
+      </div>
+      <p class="note">Os 3 primeiros elementos são protegidos, e no máximo metade do resto desbota.</p>
+      <h2>Mundo</h2>
+      <label>Semente <input id="seed" type="number" min="1" max="999999"></label>
+      <label>Nível do mar <input id="sea" type="range" min="0.30" max="0.55" step="0.01"><output id="seaOut"></output></label>
+      <div class="row">
+        <button id="newWorld">Gerar com esta semente</button>
+        <button id="randomWorld">Novo mundo</button>
+      </div>
+      <label><input type="checkbox" id="parchment"> Estilo pergaminho</label>
+      <h2>Legenda</h2>
+      <ul class="legend" id="legend"></ul>
+    </aside>
+  </div>
+</main>
+<script>
+// =====================================================================
+// REGRAS DO MUNDO — mexa aqui para mudar a geração
+// =====================================================================
+const W = 150, H = 100;   // tamanho do mundo (1 tile = 1 pixel do mapa)
+const ART = 3;            // cada tile vira 3x3 pixels de arte (para os sprites terem detalhe)
+
+const REGRAS = {
+  nivelMar: 0.42,        // altitude abaixo disso é água
+  montanha: 0.76,        // acima disso é montanha
+  neve: 0.86,            // acima disso é pico nevado
+  queda: 0.36,           // quanto a altitude cai nas bordas (forma de ilha)
+  // umidade (0 a 1) decide o bioma
+  umidade: [[0.22,'deserto'],[0.40,'savana'],[0.62,'planicie'],[0.82,'floresta'],[1.01,'tundra']],
+  // largura base da praia por bioma (o 3º ruído varia essa largura)
+  praia: { deserto:0, savana:3, planicie:3, floresta:1, tundra:1 },
+  aguaRasa: 2            // distância da terra que ainda conta como água rasa
+};
+
+const NOMES = {oceano:'Oceano profundo',raso:'Oceano raso',lago:'Lago',praia:'Praia',deserto:'Deserto',
+  savana:'Savana',planicie:'Planície',floresta:'Floresta',tundra:'Tundra',montanha:'Montanha',neve:'Neve'};
+const NA = {deserto:'no deserto',savana:'na savana',planicie:'na planície',floresta:'na floresta',tundra:'na tundra'};
+
+// Cores inspiradas no seu mapa
+const COR = {oceano:'#2a6fd6',raso:'#3b8ae6',lago:'#6cc0ee',praia:'#e4cc92',deserto:'#d8b676',savana:'#b9b56b',
+  planicie:'#8c9c4b',floresta:'#5d7b3a',tundra:'#45603f',montanha:'#ad8e69',neve:'#eef1ec'};
+const PINTA = {deserto:'#c79f62',savana:'#8f8d4c',planicie:'#6f803c',floresta:'#46612c',tundra:'#33502e',montanha:'#8a6d50',praia:'#d3b87c'};
+const LINHA_COSTA = '#1d4a9e', ONDA = '#5b9ef0', BORDA_AREIA = '#c7a66a';
+
+// =====================================================================
+// REGRAS DOS TEMAS — onde cada curiosidade faz algo surgir
+// pontuar() devolve null (lugar proibido) ou uma nota (maior = melhor)
+// =====================================================================
+const TEMAS = {
+  astronomia: {
+    nome:'Astronomia', css:'--astro', min:3.2,
+    pontuar(c){
+      if (c.tipo === 'neve') return null;
+      if (c.distMont > 6 && c.e < 0.66) return null;           // precisa estar alto ou perto das montanhas
+      return c.e * 4 + Math.min(c.maisPerto, 15) * 0.3;        // quanto mais alto e isolado, melhor
+    },
+    sprite: () => 'observatorio',
+    motivo: c => `um observatório surgiu isolado, ${c.distMont === 0 ? 'no alto da montanha' : 'perto das montanhas'}`
+  },
+  historia: {
+    nome:'História', css:'--hist', min:2.4,
+    pontuar(c){
+      if (['montanha','neve','praia'].includes(c.tipo)) return null;
+      let s = {planicie:2, savana:1.5, floresta:0.5, deserto:0.3, tundra:0.3}[c.tipo] ?? 0;
+      if (c.pertoHist < Infinity) s += 4 - Math.min(c.pertoHist, 14) * 0.35; // vilas concentradas
+      else s += 2 - Math.min(c.distAgua, 10) * 0.2;                          // a primeira nasce perto da água
+      return s;
+    },
+    sprite: (c, n) => (n % 5 === 4 ? 'torre' : 'casa'),
+    motivo: c => c.pertoHist < Infinity ? 'uma casa se juntou à vila medieval' : 'uma vila começou perto da água'
+  },
+  geologia: {
+    nome:'Geologia', css:'--geo', min:2.6,
+    pontuar(c){
+      if (c.tipo === 'neve') return null;
+      const grupo = c.pertoGeo < 6 ? 1 : 0;
+      if (c.tipo === 'deserto') return 2.5 + grupo;
+      if (c.distMont <= 3) return 3.5 - c.distMont * 0.6 + grupo;
+      return null;
+    },
+    sprite: c => (c.tipo === 'deserto' ? 'escavacao' : 'mina'),
+    motivo: c => c.tipo === 'deserto' ? 'um campo de escavação abriu no deserto' : 'uma mina abriu na montanha'
+  },
+  natureza: {
+    nome:'Natureza', css:'--nat', min:2.0,
+    pontuar(c){
+      const base = {floresta:2, tundra:2, planicie:1, savana:1, deserto:0.6}[c.tipo];
+      if (base === undefined) return null;
+      return base + (c.pertoNat < 4 ? 1.5 : 0);
+    },
+    sprite: c => ({floresta:'arvore', tundra:'pinheiro', planicie:'arvore', savana:'acacia', deserto:'cacto'})[c.tipo],
+    motivo: c => `uma planta nativa cresceu ${NA[c.tipo]}`
+  }
+};
+
+// Sprites: cada letra é uma cor, "." é transparente
+const SPRITES = {
+  casa:        ['...R...','..RrR..','.RrrrR.','RrrrrrR','.wwwww.','.wdwww.','.wdwww.'],
+  torre:       ['o.o.o','ooooo','.ooo.','.oko.','.ooo.','.ooo.','.odo.'],
+  observatorio:['....s..','..ggg..','.ggggg.','.wwwww.','.wwdww.','.wwdww.'],
+  mina:        ['.bbbbb.','bkkkkkb','bkkkkkb','bkkkkkb','ooooooo'],
+  escavacao:   ['b.....b','beeeeeb','eekeeke','.eeeee.'],
+  arvore:      ['..TTT..','.TTtTT.','TtTttTt','ttttttt','.ttttt.','...n...','...n...'],
+  pinheiro:    ['...p...','..ppp..','..ppp..','.ppppp.','.ppppp.','ppppppp','...n...'],
+  cacto:       ['...c...','.c.c...','.ccc.c.','...ccc.','...c...','...c...'],
+  acacia:      ['.TTTTT.','TtttttT','...n...','...n...','..n....']
+};
+const SPAL = {R:'#8a3a2b',r:'#b5523b',w:'#efe2c4',d:'#5a3a2a',g:'#8fa6bd',s:'#ffd84a',b:'#8a5a34',k:'#3b2a22',
+  t:'#3d6838',T:'#5f8f49',n:'#6b4a2e',c:'#6f9e4a',p:'#2e5a44',o:'#a39e96',e:'#7b5b3f'};
+const TINTA = '#2a1e18', NEVOA = '#cfd6d6';
+const TELHADOS = new Set(['#8a3a2b','#b5523b']);
+
+// =====================================================================
+// RUÍDO
+// =====================================================================
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function hash2(x,y,s){let h=Math.imul(x,374761393)^Math.imul(y,668265263)^Math.imul(s,1442695041);h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;return(h>>>0)/4294967296;}
+function valueNoise(x,y,s){
+  const xi=Math.floor(x), yi=Math.floor(y), xf=x-xi, yf=y-yi;
+  const u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf);
+  const a=hash2(xi,yi,s), b=hash2(xi+1,yi,s), c=hash2(xi,yi+1,s), d=hash2(xi+1,yi+1,s);
+  return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v;
+}
+function fbm(x,y,s,oitavas){
+  let soma=0, amp=1, f=1, norm=0;
+  for(let i=0;i<oitavas;i++){ soma+=valueNoise(x*f,y*f,s+i*101)*amp; norm+=amp; amp*=0.5; f*=2; }
+  return soma/norm;
+}
+function normalizar(arr){
+  let mn=Infinity, mx=-Infinity;
+  for(const v of arr){ if(v<mn)mn=v; if(v>mx)mx=v; }
+  const r=(mx-mn)||1;
+  for(let i=0;i<arr.length;i++) arr[i]=(arr[i]-mn)/r;
+}
+// distância (em tiles) até o pixel mais próximo que satisfaz "cond"
+function distancia(cond){
+  const d=new Int16Array(W*H).fill(999), q=new Int32Array(W*H);
+  let ini=0, fim=0;
+  for(let i=0;i<W*H;i++) if(cond(i)){ d[i]=0; q[fim++]=i; }
+  while(ini<fim){
+    const i=q[ini++], x=i%W, y=(i/W)|0, nd=d[i]+1;
+    if(x>0   && d[i-1]>nd){d[i-1]=nd;q[fim++]=i-1;}
+    if(x<W-1 && d[i+1]>nd){d[i+1]=nd;q[fim++]=i+1;}
+    if(y>0   && d[i-W]>nd){d[i-W]=nd;q[fim++]=i-W;}
+    if(y<H-1 && d[i+W]>nd){d[i+W]=nd;q[fim++]=i+W;}
+  }
+  return d;
+}
+
+// =====================================================================
+// GERAÇÃO DO MUNDO
+// =====================================================================
+let mundo = null, elementos = [], brilho = 0;
+
+function gerar(seed){
+  const alt=new Float32Array(W*H), umi=new Float32Array(W*H), det=new Float32Array(W*H);
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const i=y*W+x;
+    alt[i]=fbm(x*0.045, y*0.045, seed, 5);        // ruído 1: altitude
+    umi[i]=fbm(x*0.03,  y*0.03,  seed+7919, 4);   // ruído 2: umidade
+    det[i]=fbm(x*0.2,   y*0.2,   seed+31337, 2);  // ruído 3: detalhe das transições
+  }
+  normalizar(alt); normalizar(umi); normalizar(det);
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const i=y*W+x, dx=(x/(W-1)-.5)*2, dy=(y/(H-1)-.5)*2;
+    alt[i]=alt[i]*0.8+0.22-(dx*dx+dy*dy)*REGRAS.queda;   // forma de ilha
+  }
+  const mar=REGRAS.nivelMar;
+  const agua=new Uint8Array(W*H);
+  for(let i=0;i<W*H;i++) agua[i]=alt[i]<mar?1:0;
+
+  // oceano = água ligada à borda; o resto da água vira lago
+  const oceano=new Uint8Array(W*H), pilha=[];
+  for(let x=0;x<W;x++){ pilha.push(x, (H-1)*W+x); }
+  for(let y=0;y<H;y++){ pilha.push(y*W, y*W+W-1); }
+  while(pilha.length){
+    const i=pilha.pop();
+    if(!agua[i]||oceano[i]) continue;
+    oceano[i]=1;
+    const x=i%W, y=(i/W)|0;
+    if(x>0)pilha.push(i-1); if(x<W-1)pilha.push(i+1); if(y>0)pilha.push(i-W); if(y<H-1)pilha.push(i+W);
+  }
+  const distOceano=distancia(i=>oceano[i]);
+  const distTerra=distancia(i=>!agua[i]);
+  const bioma=u=>{ for(const [ate,b] of REGRAS.umidade) if(u<ate) return b; return 'tundra'; };
+
+  const tipo=new Array(W*H);
+  for(let i=0;i<W*H;i++){
+    if(agua[i]){
+      tipo[i]=oceano[i] ? ((distTerra[i]<=REGRAS.aguaRasa || alt[i]>mar-0.05) ? 'raso' : 'oceano') : 'lago';
+    } else if(alt[i]>=REGRAS.neve) tipo[i]='neve';
+    else if(alt[i]>=REGRAS.montanha) tipo[i]='montanha';
+    else {
+      const b=bioma(umi[i]), base=REGRAS.praia[b];
+      const largura=Math.round(base*(0.4+det[i]*1.2));   // o 3º ruído deixa a praia irregular
+      tipo[i]=(base>0 && distOceano[i]<=largura) ? 'praia' : b;
+    }
+  }
+  mundo={seed, alt, umi, agua, tipo,
+    distAgua: distancia(i=>agua[i]),
+    distMont: distancia(i=>tipo[i]==='montanha'||tipo[i]==='neve')};
+  elementos=[];
+  for(let k=0;k<3;k++) aprender('natureza', true, true);   // mundo nunca começa 100% vazio
+  escrever('Mundo novo. Três plantas já nasceram para ele não começar vazio.');
+  desenhar(); atualizarBotoes();
+}
+
+// =====================================================================
+// COLOCAR ELEMENTOS
+// =====================================================================
+let rng = mulberry32(Date.now()|0);
+function aprender(chave, protegido=false, silencioso=false){
+  const tema=TEMAS[chave];
+  let melhor=null, nota=-Infinity;
+  const nTema=elementos.filter(e=>e.tema===chave).length;
+  for(let t=0;t<500;t++){
+    const x=2+Math.floor(rng()*(W-4)), y=3+Math.floor(rng()*(H-4)), i=y*W+x;
+    if(mundo.agua[i]) continue;
+    let maisPerto=Infinity, pertoHist=Infinity, pertoGeo=Infinity, pertoNat=Infinity, bloqueado=false;
+    for(const el of elementos){
+      const d=Math.hypot(el.x-x, el.y-y);
+      if(d < (tema.min+TEMAS[el.tema].min)/2){ bloqueado=true; break; }
+      if(d<maisPerto) maisPerto=d;
+      if(el.tema==='historia' && d<pertoHist) pertoHist=d;
+      if(el.tema==='geologia' && d<pertoGeo) pertoGeo=d;
+      if(el.tema==='natureza' && d<pertoNat) pertoNat=d;
+    }
+    if(bloqueado) continue;
+    const c={x,y,tipo:mundo.tipo[i],e:mundo.alt[i],distMont:mundo.distMont[i],distAgua:mundo.distAgua[i],
+      maisPerto,pertoHist,pertoGeo,pertoNat};
+    let s=tema.pontuar(c);
+    if(s===null) continue;
+    s+=rng()*0.8;   // um pouco de acaso para não ficar robótico
+    if(s>nota){ nota=s; melhor=c; }
+  }
+  if(!melhor){
+    if(!silencioso) escrever(`Nenhum lugar serve para ${tema.nome} neste mundo. As regras estão restritivas demais para ele (tente outra semente ou ajuste as regras).`);
+    return;
+  }
+  elementos.push({tema:chave, tipo:tema.sprite(melhor,nTema), x:melhor.x, y:melhor.y, protegido, desbotado:false});
+  elementos.sort((a,b)=>a.y-b.y);   // quem está mais abaixo é desenhado por cima
+  if(!silencioso){
+    escrever(`${tema.nome}: ${tema.motivo(melhor)} (${NOMES[melhor.tipo]}, altitude ${melhor.e.toFixed(2)}).`);
+    desenhar(); atualizarBotoes();
+  }
+}
+
+function esquecer(){
+  const livres=elementos.filter(e=>!e.protegido);
+  if(!livres.length){ escrever('Aprenda algumas curiosidades antes. Os primeiros elementos são protegidos.'); return; }
+  const limite=Math.floor(livres.length*0.5), jaDesb=livres.filter(e=>e.desbotado).length;
+  const n=Math.min(Math.max(1,Math.ceil(livres.length*0.2)), limite-jaDesb);
+  if(n<=0){ escrever('O esquecimento chegou ao limite: nunca passa de metade do mundo.'); return; }
+  const cand=livres.filter(e=>!e.desbotado).sort(()=>rng()-.5).slice(0,n);
+  cand.forEach(e=>e.desbotado=true);
+  escrever(`A névoa voltou sobre ${n} ${n>1?'elementos':'elemento'}. Revise para recuperar.`);
+  desenhar();
+}
+
+function revisar(){
+  const desb=elementos.filter(e=>e.desbotado);
+  if(!desb.length){ escrever('Tudo em dia. Nada para recuperar.'); return; }
+  desb.forEach(e=>{ e.desbotado=false; e.brilha=true; });
+  escrever(`Revisão feita: ${desb.length} ${desb.length>1?'elementos voltaram':'elemento voltou'} a brilhar.`);
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches){ desb.forEach(e=>e.brilha=false); desenhar(); return; }
+  const ini=performance.now();
+  const passo=agora=>{
+    brilho=Math.max(0,1-(agora-ini)/700);
+    desenhar();
+    if(brilho>0) requestAnimationFrame(passo); else { elementos.forEach(e=>e.brilha=false); desenhar(); }
+  };
+  requestAnimationFrame(passo);
+}
+
+// =====================================================================
+// DESENHO
+// =====================================================================
+const canvas=document.getElementById('map'), ctx=canvas.getContext('2d');
+const AW=W*ART, AH=H*ART;
+const hexRgb=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+const mix=(a,b,t)=>[a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t];
+const PAPEL=hexRgb('#f1e0b8'), TINTA_S=hexRgb('#4a3526');
+let pergaminho=false;
+function pal(hex){
+  const c=hexRgb(hex);
+  if(!pergaminho) return c;
+  const lum=(0.3*c[0]+0.59*c[1]+0.11*c[2])/255;
+  const sep=mix(TINTA_S,PAPEL,Math.pow(lum,0.8));
+  return TELHADOS.has(hex) ? mix(sep,c,0.55) : sep;   // telhados mantêm um pouco de cor
+}
+
+function desenhar(){
+  const img=ctx.createImageData(AW,AH), px=img.data;
+  const put=(ax,ay,c)=>{ if(ax<0||ay<0||ax>=AW||ay>=AH)return; const k=(ay*AW+ax)*4; px[k]=c[0];px[k+1]=c[1];px[k+2]=c[2];px[k+3]=255; };
+  const ehAgua=(x,y)=> x<0||y<0||x>=W||y>=H ? true : mundo.agua[y*W+x]===1;
+  const cache={}; const P=h=>cache[h]||(cache[h]=pal(h));
+
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const i=y*W+x, t=mundo.tipo[i], agua=mundo.agua[i]===1;
+    for(let sy=0;sy<ART;sy++) for(let sx=0;sx<ART;sx++){
+      const ax=x*ART+sx, ay=y*ART+sy;
+      let cor=COR[t];
+      // borda: pixel de arte que encosta no vizinho do outro tipo (água/terra)
+      const borda=(sx===0&&ehAgua(x-1,y)!==agua)||(sx===ART-1&&ehAgua(x+1,y)!==agua)||
+                  (sy===0&&ehAgua(x,y-1)!==agua)||(sy===ART-1&&ehAgua(x,y+1)!==agua);
+      if(borda) cor = agua ? LINHA_COSTA : BORDA_AREIA;
+      else if(PINTA[t] && hash2(ax,ay,mundo.seed+5)<0.08) cor=PINTA[t];
+      else if(t==='oceano' && sy===1 && hash2(x,y,mundo.seed+9)<0.02) cor=ONDA;
+      put(ax,ay,P(cor));
+    }
+  }
+
+  const tinta=P(TINTA), nevoa=P(NEVOA), luz=hexRgb('#fff3b0');
+  for(const el of elementos){
+    const rows=SPRITES[el.tipo], h=rows.length, w=rows[0].length;
+    const x0=el.x*ART+1-Math.floor(w/2), y0=el.y*ART+2-(h-1);
+    const cheio=(r,c)=> r>=0&&c>=0&&r<h&&c<w&&rows[r][c]!=='.';
+    const contorno = el.desbotado ? mix(tinta,nevoa,0.6) : tinta;
+    for(let r=-1;r<=h;r++) for(let c=-1;c<=w;c++){
+      if(cheio(r,c)) continue;
+      if(cheio(r-1,c)||cheio(r+1,c)||cheio(r,c-1)||cheio(r,c+1)) put(x0+c,y0+r,contorno);
+    }
+    for(let r=0;r<h;r++) for(let c=0;c<w;c++){
+      const ch=rows[r][c]; if(ch==='.') continue;
+      let cor=P(SPAL[ch]);
+      if(el.desbotado) cor=mix(cor,nevoa,0.7);
+      if(el.brilha) cor=mix(cor,luz,brilho*0.8);
+      put(x0+c,y0+r,cor);
+    }
+  }
+  ctx.putImageData(img,0,0);
+}
+
+// =====================================================================
+// INTERFACE
+// =====================================================================
+const logEl=document.getElementById('log');
+function escrever(t){ logEl.textContent=t; }
+
+const temasEl=document.getElementById('themes');
+for(const [k,t] of Object.entries(TEMAS)){
+  const b=document.createElement('button');
+  b.className='theme'; b.style.setProperty('--c',`var(${t.css})`);
+  b.innerHTML=`<span>${t.nome}</span><b data-n="${k}">0</b>`;
+  b.addEventListener('click',()=>aprender(k));
+  temasEl.appendChild(b);
+}
+function atualizarBotoes(){
+  for(const k of Object.keys(TEMAS))
+    document.querySelector(`[data-n="${k}"]`).textContent=elementos.filter(e=>e.tema===k).length;
+}
+
+function montarLegenda(){
+  const ul=document.getElementById('legend'); ul.innerHTML='';
+  for(const [k,n] of Object.entries(NOMES)){
+    const c=pal(COR[k]);
+    ul.insertAdjacentHTML('beforeend',`<li><i style="background:rgb(${c.map(Math.round).join(',')})"></i>${n}</li>`);
+  }
+}
+
+canvas.addEventListener('mousemove',ev=>{
+  const r=canvas.getBoundingClientRect();
+  const x=Math.floor((ev.clientX-r.left)/r.width*W), y=Math.floor((ev.clientY-r.top)/r.height*H);
+  if(x<0||y<0||x>=W||y>=H) return;
+  const i=y*W+x;
+  document.getElementById('hover').textContent=
+    `Pixel (${x}, ${y}): ${NOMES[mundo.tipo[i]]}, altitude ${mundo.alt[i].toFixed(2)}, umidade ${mundo.umi[i].toFixed(2)}`;
+});
+
+const seedEl=document.getElementById('seed'), seaEl=document.getElementById('sea'), seaOut=document.getElementById('seaOut');
+seaEl.value=REGRAS.nivelMar; seaOut.textContent=REGRAS.nivelMar.toFixed(2);
+seaEl.addEventListener('input',()=>{ seaOut.textContent=(+seaEl.value).toFixed(2); });
+seaEl.addEventListener('change',()=>{ REGRAS.nivelMar=+seaEl.value; gerar(+seedEl.value||1); });
+document.getElementById('newWorld').addEventListener('click',()=>gerar(+seedEl.value||1));
+document.getElementById('randomWorld').addEventListener('click',()=>{ seedEl.value=1+Math.floor(Math.random()*99999); gerar(+seedEl.value); });
+document.getElementById('forget').addEventListener('click',esquecer);
+document.getElementById('review').addEventListener('click',revisar);
+document.getElementById('parchment').addEventListener('change',ev=>{ pergaminho=ev.target.checked; montarLegenda(); desenhar(); });
+
+seedEl.value=1+Math.floor(Math.random()*99999);
+montarLegenda();
+gerar(+seedEl.value);
+</script>
+</body>
+</html>
