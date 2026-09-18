@@ -6,7 +6,15 @@
 import type { InfluenceKey, KnowledgeInfluence } from '../../../shared/domain/influence';
 import type { WorldGrowthEvent, WorldGrowthKind } from './types';
 
-/** Nome curto de cada tipo de crescimento, para mensagens e botões. */
+/**
+ * Nome curto de cada tipo de crescimento, para mensagens e botões.
+ *
+ * TEMPORÁRIO: `crescerVegetacao` não é a forma final de representar conhecimento
+ * de natureza. Árvores selvagens agora nascem com o mundo (engine/nature.ts).
+ * Conhecimento de natureza deve virar coisas construídas — jardim, pomar, horta,
+ * viveiro, estufa, reserva, centro ecológico —, ainda não implementadas. O evento
+ * continua existindo só enquanto serve de teste no modo desenvolvedor.
+ */
 export const NOMES_DE_CRESCIMENTO: Record<WorldGrowthKind, string> = {
   crescerVegetacao: 'Vegetação',
   desenvolverPovoamento: 'Povoamento',
@@ -16,6 +24,12 @@ export const NOMES_DE_CRESCIMENTO: Record<WorldGrowthKind, string> = {
 };
 
 export const CHAVES_DE_CRESCIMENTO = Object.keys(NOMES_DE_CRESCIMENTO) as WorldGrowthKind[];
+
+/**
+ * Crescimentos que o conhecimento pode disparar hoje. Natureza pertence à seed,
+ * então `crescerVegetacao` fica fora (continua no domínio, mas não é oferecido).
+ */
+export const CHAVES_DE_CIVILIZACAO = CHAVES_DE_CRESCIMENTO.filter((k) => k !== 'crescerVegetacao');
 
 /** Record completo: uma InfluenceKey nova não compila até ganhar um destino aqui. */
 const EVENTO_POR_INFLUENCIA: Record<InfluenceKey, WorldGrowthKind> = {

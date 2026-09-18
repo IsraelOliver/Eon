@@ -2,7 +2,8 @@
 // GERAÇÃO DO MUNDO
 // =====================================================================
 import { fbm, normalizar } from './noise';
-import { H, REGRAS, W } from './rules';
+import { gerarNatureza } from './nature';
+import { H, MARGEM_OCEANO, REGRAS, W } from './rules';
 import type { Biome, TileType, World } from './types';
 
 const N = W * H;
@@ -45,9 +46,10 @@ function gerarRuidos(seed: number) {
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const i = y * W + x;
-      alt[i] = fbm(x * 0.045, y * 0.045, seed, 5);
-      umi[i] = fbm(x * 0.03, y * 0.03, seed + 7919, 4);
-      det[i] = fbm(x * 0.2, y * 0.2, seed + 31337, 2);
+      const f = REGRAS.frequencia;
+      alt[i] = fbm(x * f.altitude, y * f.altitude, seed, 5);
+      umi[i] = fbm(x * f.umidade, y * f.umidade, seed + 7919, 4);
+      det[i] = fbm(x * f.detalhe, y * f.detalhe, seed + 31337, 2);
     }
   }
   normalizar(alt);
@@ -56,14 +58,27 @@ function gerarRuidos(seed: number) {
   return { alt, umi, det };
 }
 
-/** Rebaixa as bordas para o mundo virar uma ilha. */
+/**
+ * Fator de 0 a 1 que some perto da borda do mapa, com transição suave
+ * (smoothstep). Garante a faixa de oceano de MARGEM_OCEANO tiles.
+ */
+function fatorDeBorda(x: number, y: number): number {
+  const daBorda = Math.min(x, y, W - 1 - x, H - 1 - y);
+  const t = Math.min(1, daBorda / MARGEM_OCEANO);
+  return t * t * (3 - 2 * t);
+}
+
+/** Rebaixa as bordas para o mundo virar uma ilha cercada de oceano. */
 function formarIlha(alt: Float32Array): void {
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const i = y * W + x;
       const dx = (x / (W - 1) - 0.5) * 2;
       const dy = (y / (H - 1) - 0.5) * 2;
-      alt[i] = alt[i] * 0.8 + 0.22 - (dx * dx + dy * dy) * REGRAS.queda;
+      const base = alt[i] * 0.8 + 0.22 - (dx * dx + dy * dy) * REGRAS.queda;
+      const f = fatorDeBorda(x, y);
+      // longe da borda vale o terreno; colado nela afunda bem abaixo do nível do mar
+      alt[i] = base * f - (1 - f) * 0.3;
     }
   }
 }
@@ -86,6 +101,36 @@ function marcarOceano(agua: Uint8Array): Uint8Array {
     if (y < H - 1) pilha.push(i + W);
   }
   return oceano;
+}
+
+/** Terreno onde dá para viver: terra que não é praia, montanha nem neve. */
+const HABITAVEL: ReadonlySet<TileType> = new Set<TileType>(['deserto', 'savana', 'planicie', 'floresta', 'tundra']);
+
+/**
+ * Centro da massa habitável: média das posições habitáveis e distância média até
+ * ela. Serve para o crescimento preferir o miolo do território, não as bordas.
+ * Calculado uma vez por mundo.
+ */
+function calcularCentroHabitavel(tipo: TileType[]): World['centro'] {
+  let somaX = 0;
+  let somaY = 0;
+  let n = 0;
+  for (let i = 0; i < N; i++) {
+    if (!HABITAVEL.has(tipo[i])) continue;
+    somaX += i % W;
+    somaY += (i / W) | 0;
+    n++;
+  }
+  if (!n) return { x: W / 2, y: H / 2, raio: Math.min(W, H) / 4 }; // mundo sem terra habitável
+
+  const x = somaX / n;
+  const y = somaY / n;
+  let somaDist = 0;
+  for (let i = 0; i < N; i++) {
+    if (!HABITAVEL.has(tipo[i])) continue;
+    somaDist += Math.hypot((i % W) - x, ((i / W) | 0) - y);
+  }
+  return { x, y, raio: Math.max(1, somaDist / n) };
 }
 
 /** nivelMar vem como parâmetro (o modo desenvolvedor muda); o padrão é o das REGRAS. */
@@ -127,5 +172,7 @@ export function gerarMundo(seed: number, nivelMar: number = REGRAS.nivelMar): Wo
     tipo,
     distAgua: distancia((i) => agua[i] === 1),
     distMont: distancia((i) => tipo[i] === 'montanha' || tipo[i] === 'neve'),
+    centro: calcularCentroHabitavel(tipo),
+    natureza: gerarNatureza(seed, tipo, agua),
   };
 }

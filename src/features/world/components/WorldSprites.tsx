@@ -6,7 +6,7 @@ import { useRef } from 'react';
 import { useSpriteImages } from '../hooks/useSpriteImages';
 import { ART } from '../render/buildPixels';
 import type { RenderElement } from '../render/renderElements';
-import { SPRITE_PNG, type SpriteComPng } from '../render/spriteAssets';
+import { imagemDoElemento } from '../render/spriteAssets';
 import { construirSprite } from '../render/spriteBuffers';
 
 // "Nearest" = pixels quadrados em qualquer zoom
@@ -16,8 +16,6 @@ const OPACIDADE_DESBOTADO = 0.5;
 
 /** Clareia o sprite para a animação da revisão (k de 0 a 1). */
 const clarear = (k: number) => [1, 0, 0, 0, k * 0.35, 0, 1, 0, 0, k * 0.35, 0, 0, 1, 0, k * 0.2, 0, 0, 0, 1, 0];
-
-const temPng = (tipo: RenderElement['tipo']): tipo is SpriteComPng => tipo in SPRITE_PNG;
 
 type Buffer = { imagem: SkImage; largura: number; altura: number; deslocX: number; deslocY: number };
 
@@ -68,7 +66,8 @@ export function WorldSprites({ elementos, brilho }: Props) {
       {elementos.map((el, i) => {
         const chave = `${el.tipo}-${el.x}-${el.y}-${i}`;
         const luz = el.brilha ? brilho : 0;
-        const png = temPng(el.tipo) ? pngs[el.tipo] : null;
+        const chaveImagem = imagemDoElemento(el);
+        const png = chaveImagem ? pngs[chaveImagem] : null;
 
         if (png) {
           // âncora: centro do tile na horizontal, base do sprite no pé do tile

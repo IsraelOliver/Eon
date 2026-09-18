@@ -2,14 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 
 import { gerarMundo } from '../engine/generate';
-import { CHAVES_DE_CRESCIMENTO, NOMES_DE_CRESCIMENTO } from '../engine/growth';
+import { CHAVES_DE_CIVILIZACAO, NOMES_DE_CRESCIMENTO } from '../engine/growth';
 import { aplicarEventosDeCrescimento } from '../engine/growthElements';
 import { descreverTile } from '../engine/inspect';
 import { mulberry32 } from '../engine/noise';
 import { aprender, contarPorTema, esquecer, revisar, semear } from '../engine/placement';
 import { FAIXA_NIVEL_MAR, FAIXA_SEMENTE, REGRAS } from '../engine/rules';
 import { CHAVES_TEMAS, TEMAS } from '../engine/themes';
-import type { Element, GrowthElement, Rng, ThemeKey, World, WorldGrowthKind } from '../engine/types';
+import type { Element, GrowthElement, Rng, Settlement, ThemeKey, World, WorldGrowthKind } from '../engine/types';
 import { ART, ART_H, ART_W, desenharTerreno } from '../render/buildPixels';
 import { montarLegenda } from '../render/legend';
 import { combinarParaDesenho } from '../render/renderElements';
@@ -23,6 +23,8 @@ type Estado = {
   elementos: Element[];
   /** Novo sistema: elementos sem tema, criados por eventos de crescimento. */
   crescimento: GrowthElement[];
+  /** Vilas: o núcleo lógico onde casas e infraestrutura nascem. */
+  settlements: Settlement[];
   mensagem: string;
   idMensagem: number;
 };
@@ -33,8 +35,8 @@ function sementeAleatoria(): number {
 
 function criarEstado(rng: Rng, idMensagem: number, seed: number, nivelMar: number): Estado {
   const mundo = gerarMundo(seed, nivelMar);
-  // mundo novo começa sem nenhum elemento de crescimento
-  return { mundo, idMensagem, crescimento: [], ...semear(mundo, rng) };
+  // mundo novo começa sem civilização: nem elementos de crescimento, nem vilas
+  return { mundo, idMensagem, crescimento: [], settlements: [], ...semear(mundo, rng) };
 }
 
 /** Liga o engine (regras) ao desenho e aos botões. */
@@ -50,7 +52,10 @@ export function useWorld() {
   // buffer pesado: só é refeito quando o mundo muda
   const terreno = useMemo(() => desenharTerreno(mundo), [mundo]);
   // lista leve de sprites: muda a cada elemento novo, sem tocar no terreno
-  const paraDesenho = useMemo(() => combinarParaDesenho(elementos, crescimento), [elementos, crescimento]);
+  const paraDesenho = useMemo(
+    () => combinarParaDesenho(elementos, mundo.natureza, crescimento),
+    [elementos, mundo.natureza, crescimento],
+  );
   const legenda = useMemo(() => montarLegenda(), []);
   const contagem = contarPorTema(elementos);
   const temas = CHAVES_TEMAS.map((chave) => ({ chave, nome: TEMAS[chave].nome, quantidade: contagem[chave] }));
@@ -126,15 +131,27 @@ export function useWorld() {
     mudarNivelMar(nivelMar: number) {
       recriar(mundo.seed, nivelMar);
     },
-    /** (dev) Tipos de crescimento disponíveis, com o nome para o botão. */
-    crescimentos: CHAVES_DE_CRESCIMENTO.map((tipo) => ({ tipo, nome: NOMES_DE_CRESCIMENTO[tipo] })),
+    /** (dev) Crescimentos da civilização, com o nome para o botão (natureza vem da seed). */
+    crescimentos: CHAVES_DE_CIVILIZACAO.map((tipo) => ({ tipo, nome: NOMES_DE_CRESCIMENTO[tipo] })),
     /** (dev) Aplica um evento de intensidade 1 do novo sistema de crescimento. */
     aplicarCrescimentoDev(tipo: WorldGrowthKind) {
-      const r = aplicarEventosDeCrescimento(mundo, crescimento, [{ tipo, intensidade: 1 }], rng);
-      const mensagem = r.adicionados.length
-        ? `${NOMES_DE_CRESCIMENTO[tipo]} cresceu no mundo.`
-        : 'Não foi encontrado um local válido para esse crescimento.';
-      setEstado({ ...estado, crescimento: r.elementos, mensagem, idMensagem: idMensagem + 1 });
+      const r = aplicarEventosDeCrescimento(mundo, crescimento, estado.settlements, [{ tipo, intensidade: 1 }], rng);
+      const novo = r.adicionados[0];
+      const vila = novo?.settlementId ? r.settlements.find((s) => s.id === novo.settlementId) : undefined;
+      const ganhouFonte = r.adicionados.some((e) => e.tipo === 'fonte');
+      const mensagem = !novo
+        ? 'Não foi encontrado um local válido para esse crescimento.'
+        : vila
+          ? `${NOMES_DE_CRESCIMENTO[tipo]} cresceu. Vila: ${vila.quantidadeElementos} elementos, raio ${Math.round(vila.raio)}.` +
+            (ganhouFonte ? ' A vila ganhou uma fonte!' : '')
+          : `${NOMES_DE_CRESCIMENTO[tipo]} cresceu no mundo.`;
+      setEstado({
+        ...estado,
+        crescimento: r.elementos,
+        settlements: r.settlements,
+        mensagem,
+        idMensagem: idMensagem + 1,
+      });
     },
     /** Recebe um ponto em pixels de arte e mostra no aviso o que há naquele tile. */
     inspecionar(artX: number, artY: number) {
