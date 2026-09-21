@@ -3,6 +3,7 @@ import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/shared/theme/colors';
+import { ESPACO_ACTION_BAR } from '@/shared/ui/ActionBar';
 
 import { NOMES_DE_TEMA } from '../engine/themes';
 import type { Curiosity, CuriositySource, LearningResult } from '../engine/types';
@@ -38,7 +39,7 @@ export function CuriosityReader({ curiosidade, aprendida, onVoltar, onAprender, 
       </Pressable>
 
       <ScrollView
-        contentContainerStyle={[styles.conteudo, { paddingBottom: insets.bottom + 32 }]}
+        contentContainerStyle={[styles.conteudo, { paddingBottom: insets.bottom + ESPACO_ACTION_BAR + 16 }]}
         showsVerticalScrollIndicator={false}
       >
         <Text style={[styles.tema, { color: c.muted }]}>{NOMES_DE_TEMA[curiosidade.tema].toUpperCase()}</Text>

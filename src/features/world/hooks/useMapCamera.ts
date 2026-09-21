@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
 import { cancelAnimation, useDerivedValue, useSharedValue, withDecay } from 'react-native-reanimated';
@@ -37,6 +37,8 @@ export function useMapCamera(largura: number, altura: number) {
   const x = useSharedValue(0);
   const y = useSharedValue(0);
   const pincando = useSharedValue(false);
+  /** Contador de pedidos de repintar. Veja `repintar()` lá embaixo. */
+  const revisao = useSharedValue(0);
 
   // Ao abrir (ou mudar o tamanho da tela): zoom mínimo, centralizado.
   useEffect(() => {
@@ -98,11 +100,34 @@ export function useMapCamera(largura: number, altura: number) {
   const gesto = Gesture.Simultaneous(arrastar, pinca);
 
   // Tela = deslocamento + escala × ponto do mapa
-  const transformacao = useDerivedValue(() => [
-    { translateX: x.value },
-    { translateY: y.value },
-    { scale: escala.value },
-  ]);
+  const transformacao = useDerivedValue(() => {
+    // `revisao` entra na conta de propósito. Somar zero mantém a câmera
+    // idêntica, mas faz este valor derivado ser reescrito — e é isso que o
+    // Skia observa para reenviar a cena. Veja `repintar()`.
+    const repinte = revisao.value * 0;
+    return [
+      { translateX: x.value + repinte },
+      { translateY: y.value },
+      { scale: escala.value },
+    ];
+  });
+
+  /**
+   * Pede um repintar sem mexer na câmera.
+   *
+   * O Skia não redesenha porque a view voltou a aparecer: ele redesenha quando a
+   * cena é reenviada ao nativo (`setJsiProperty("picture")`). Isso acontece por
+   * dois caminhos — os children do `Canvas` mudarem de identidade (o React
+   * Compiler memoiza os nossos, então isso não acontece sozinho) ou um shared
+   * value observado mudar. Este é o segundo caminho: exatamente o mesmo que um
+   * arrastar dispara, que é o que hoje faz o mapa voltar.
+   *
+   * `redraw()` do `useCanvasRef` NÃO serve: ele só pede à view que redesenhe a
+   * picture que já tem.
+   */
+  const repintar = useCallback(() => {
+    revisao.set(revisao.get() + 1);
+  }, [revisao]);
 
   /** Converte um ponto da tela para pixels de arte do mapa (desfaz a transformação). */
   const paraMapa = (px: number, py: number) => ({
@@ -110,5 +135,5 @@ export function useMapCamera(largura: number, altura: number) {
     y: (py - y.get()) / escala.get(),
   });
 
-  return { gesto, transformacao, paraMapa };
+  return { gesto, transformacao, paraMapa, repintar };
 }

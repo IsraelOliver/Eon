@@ -13,7 +13,8 @@ export type Icon = string | ImageSourcePropType;
 
 export const ICONS = {
   gear: '⚙︎',
-  menu: '☰',
-  aprender: '✦',
   mundo: '◉',
+  /** Provisório: o aparelho que abre o feed. Vira pixel art depois. */
+  celular: '▯',
+  fechar: '✕',
 } satisfies Record<string, Icon>;

@@ -1,13 +1,14 @@
-import { useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useColors } from '@/shared/theme/colors';
 import { Button } from '@/shared/ui/Button';
-import { FloatingButton } from '@/shared/ui/FloatingButton';
-import { ICONS } from '@/shared/ui/icons';
 import { Window } from '@/shared/ui/Window';
 
 type Props = {
+  /** Quem abre é a barra de ações, na composição. */
+  aberto: boolean;
+  onFechar: () => void;
   onNovoMundo: () => void;
   devAtivo: boolean;
   /** Cada toque no enfeite do rodapé (5 seguidos alternam o modo desenvolvedor). */
@@ -16,10 +17,9 @@ type Props = {
   ferramentasDev: ReactNode;
 };
 
-/** Engrenagem (superior esquerdo) + janela "Configurações". */
-export function SettingsMenu({ onNovoMundo, devAtivo, onToqueSecreto, ferramentasDev }: Props) {
+/** Janela "Configurações". O botão que a abre vive na barra de ações. */
+export function SettingsMenu({ aberto, onFechar, onNovoMundo, devAtivo, onToqueSecreto, ferramentasDev }: Props) {
   const c = useColors();
-  const [aberto, setAberto] = useState(false);
 
   // Parece só um enfeite no rodapé da janela.
   const enfeite = (
@@ -29,26 +29,23 @@ export function SettingsMenu({ onNovoMundo, devAtivo, onToqueSecreto, ferramenta
   );
 
   return (
-    <>
-      <FloatingButton icon={ICONS.gear} corner="top-left" accessibilityLabel="Abrir configurações" onPress={() => setAberto(true)} />
-      <Window visible={aberto} title="Configurações" onClose={() => setAberto(false)} footer={enfeite}>
-        <Button
-          label="Novo mundo"
-          onPress={() => {
-            setAberto(false);
-            onNovoMundo();
-          }}
-        />
-        {devAtivo && (
-          <View style={[styles.secao, { borderTopColor: c.line }]}>
-            <Text style={[styles.subtitulo, { color: c.ink }]} accessibilityRole="header">
-              Desenvolvedor
-            </Text>
-            {ferramentasDev}
-          </View>
-        )}
-      </Window>
-    </>
+    <Window visible={aberto} title="Configurações" onClose={onFechar} footer={enfeite}>
+      <Button
+        label="Novo mundo"
+        onPress={() => {
+          onFechar();
+          onNovoMundo();
+        }}
+      />
+      {devAtivo && (
+        <View style={[styles.secao, { borderTopColor: c.line }]}>
+          <Text style={[styles.subtitulo, { color: c.ink }]} accessibilityRole="header">
+            Desenvolvedor
+          </Text>
+          {ferramentasDev}
+        </View>
+      )}
+    </Window>
   );
 }
 

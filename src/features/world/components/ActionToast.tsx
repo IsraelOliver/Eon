@@ -4,12 +4,13 @@ import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSequence, wi
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/shared/theme/colors';
-import { FLOATING_MARGIN, FLOATING_SIZE } from '@/shared/ui/FloatingButton';
+import { ESPACO_ACTION_BAR } from '@/shared/ui/ActionBar';
 
 const FADE_MS = 250;
 
-// Espaço lateral igual dos dois lados, para centralizar sem cobrir os botões flutuantes.
-const LATERAL = FLOATING_MARGIN + FLOATING_SIZE + FLOATING_MARGIN;
+const MARGEM = 12;
+/** Espaço lateral igual dos dois lados, para o aviso ficar centralizado e estreito. */
+const LATERAL = 72;
 
 type Props = {
   mensagem: string;
@@ -19,12 +20,10 @@ type Props = {
   position?: 'top' | 'bottom';
   /** Quanto tempo o aviso fica visível, em ms. */
   duration?: number;
-  /** Espaço extra na borda de baixo, para não ficar atrás da barra de navegação. */
-  offset?: number;
 };
 
 /** Aviso pequeno e centralizado que some sozinho. Fica acima das janelas. */
-export function ActionToast({ mensagem, id, position = 'bottom', duration = 3000, offset = 0 }: Props) {
+export function ActionToast({ mensagem, id, position = 'bottom', duration = 3000 }: Props) {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const opacidade = useSharedValue(0);
@@ -40,10 +39,11 @@ export function ActionToast({ mensagem, id, position = 'bottom', duration = 3000
   }, [id, mensagem, duration, opacidade]);
 
   const estiloAnimado = useAnimatedStyle(() => ({ opacity: opacidade.value }));
+  // Embaixo, o aviso fica acima da barra de ações.
   const vertical =
     position === 'top'
-      ? { top: insets.top + FLOATING_MARGIN }
-      : { bottom: insets.bottom + FLOATING_MARGIN + offset };
+      ? { top: insets.top + MARGEM }
+      : { bottom: insets.bottom + ESPACO_ACTION_BAR + MARGEM };
 
   return (
     <Animated.View
@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
   faixa: {
     position: 'absolute',
     zIndex: 20, // acima das janelas (Window usa 10)
-    minHeight: FLOATING_SIZE,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },

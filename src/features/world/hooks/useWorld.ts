@@ -1,21 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo } from 'react-native';
+import { useMemo, useState } from 'react';
 
 import { gerarMundo } from '../engine/generate';
 import { CHAVES_DE_CIVILIZACAO, NOMES_DE_CRESCIMENTO } from '../engine/growth';
 import { aplicarEventosDeCrescimento } from '../engine/growthElements';
 import { descreverTile } from '../engine/inspect';
 import { mulberry32 } from '../engine/noise';
-import { aprender, contarPorTema, esquecer, revisar, semear } from '../engine/placement';
+import { semear } from '../engine/placement';
 import { FAIXA_NIVEL_MAR, FAIXA_SEMENTE, REGRAS } from '../engine/rules';
-import { CHAVES_TEMAS, TEMAS } from '../engine/themes';
-import type { Element, GrowthElement, Rng, Settlement, ThemeKey, World, WorldGrowthKind } from '../engine/types';
+import type {
+  Element, GrowthElement, GrowthResult, Rng, Settlement, World, WorldGrowthEvent, WorldGrowthKind,
+} from '../engine/types';
 import { ART, ART_H, ART_W, desenharTerreno } from '../render/buildPixels';
 import { montarLegenda } from '../render/legend';
 import { desenharCaminhos } from '../render/pathPixels';
 import { combinarParaDesenho } from '../render/renderElements';
-
-const DURACAO_BRILHO = 700; // ms
 
 /** idMensagem muda a cada ação, para o aviso reaparecer mesmo com texto repetido. */
 type Estado = {
@@ -34,6 +32,23 @@ function sementeAleatoria(): number {
   return 1 + Math.floor(Math.random() * 99999);
 }
 
+/** Uma mensagem só para o crescimento, venha ele do aprendizado ou do modo dev. */
+function mensagemDeCrescimento(eventos: readonly WorldGrowthEvent[], r: GrowthResult): string {
+  if (r.adicionados.length === 0) return 'Não foi encontrado um local válido para esse crescimento.';
+
+  const semLugar = new Set(r.semLugar);
+  const nomes = eventos.filter((e) => !semLugar.has(e.tipo)).map((e) => NOMES_DE_CRESCIMENTO[e.tipo]);
+  const idDaVila = r.adicionados.find((e) => e.settlementId)?.settlementId;
+  const vila = idDaVila ? r.settlements.find((s) => s.id === idDaVila) : undefined;
+  const ganhouFonte = r.adicionados.some((e) => e.tipo === 'fonte');
+
+  if (!vila) return `${nomes.join(' e ')} cresceu no mundo.`;
+  return (
+    `${nomes.join(' e ')} cresceu. Vila: ${vila.quantidadeElementos} elementos, raio ${Math.round(vila.raio)}.` +
+    (ganhouFonte ? ' A vila ganhou uma fonte!' : '')
+  );
+}
+
 function criarEstado(rng: Rng, idMensagem: number, seed: number, nivelMar: number): Estado {
   const mundo = gerarMundo(seed, nivelMar);
   // mundo novo começa sem civilização: nem elementos de crescimento, nem vilas
@@ -44,10 +59,6 @@ function criarEstado(rng: Rng, idMensagem: number, seed: number, nivelMar: numbe
 export function useWorld() {
   const [rng] = useState(() => mulberry32(Date.now() | 0));
   const [estado, setEstado] = useState(() => criarEstado(rng, 0, sementeAleatoria(), REGRAS.nivelMar));
-  const [brilho, setBrilho] = useState(0);
-  const animacao = useRef<number | null>(null);
-  const reduzirMovimento = useReducedMotion();
-
   const { mundo, elementos, crescimento, settlements, mensagem, idMensagem } = estado;
 
   // buffer pesado: só é refeito quando o mundo muda
@@ -61,40 +72,30 @@ export function useWorld() {
     [elementos, mundo.natureza, crescimento, caminhos],
   );
   const legenda = useMemo(() => montarLegenda(), []);
-  const contagem = contarPorTema(elementos);
-  const temas = CHAVES_TEMAS.map((chave) => ({ chave, nome: TEMAS[chave].nome, quantidade: contagem[chave] }));
 
-  useEffect(() => () => pararBrilho(), []);
-
-  function pararBrilho() {
-    if (animacao.current !== null) cancelAnimationFrame(animacao.current);
-    animacao.current = null;
-  }
-
-  function apagarBrilho() {
-    setBrilho(0);
-    setEstado((s) => ({ ...s, elementos: s.elementos.map((e) => (e.brilha ? { ...e, brilha: false } : e)) }));
-  }
-
-  function animarBrilho() {
-    pararBrilho();
-    const inicio = performance.now();
-    const passo = (agora: number) => {
-      const b = Math.max(0, 1 - (agora - inicio) / DURACAO_BRILHO);
-      if (b > 0) {
-        setBrilho(b);
-        animacao.current = requestAnimationFrame(passo);
-      } else {
-        animacao.current = null;
-        apagarBrilho();
-      }
-    };
-    animacao.current = requestAnimationFrame(passo);
+  /**
+   * Aplica eventos de crescimento ao mundo. É por aqui que o conhecimento chega
+   * ao mapa: a composição traduz influências em eventos e chama esta função.
+   *
+   * O estado é lido **dentro** do updater, para duas aprendizagens seguidas não
+   * se atropelarem. O `rng` tem estado próprio, e por isso o updater precisa
+   * rodar uma vez só — hoje roda (não há `StrictMode` no app).
+   */
+  function aplicarEventos(eventos: readonly WorldGrowthEvent[]) {
+    if (eventos.length === 0) return;
+    setEstado((s) => {
+      const r = aplicarEventosDeCrescimento(s.mundo, s.crescimento, s.settlements, eventos, rng);
+      return {
+        ...s,
+        crescimento: r.elementos,
+        settlements: r.settlements,
+        mensagem: mensagemDeCrescimento(eventos, r),
+        idMensagem: s.idMensagem + 1,
+      };
+    });
   }
 
   function recriar(seed: number, nivelMar: number) {
-    pararBrilho();
-    setBrilho(0);
     setEstado(criarEstado(rng, idMensagem + 1, seed, nivelMar));
   }
 
@@ -102,29 +103,14 @@ export function useWorld() {
     terreno,
     caminhos: camadaCaminhos,
     elementosParaDesenho: paraDesenho,
-    brilho,
     largura: ART_W,
     altura: ART_H,
     mensagem,
     idMensagem,
-    temas,
     seed: mundo.seed,
     nivelMar: mundo.nivelMar,
     faixaNivelMar: FAIXA_NIVEL_MAR,
     legenda,
-    aprender(chave: ThemeKey) {
-      setEstado({ ...estado, idMensagem: idMensagem + 1, ...aprender(mundo, elementos, chave, rng) });
-    },
-    esquecer() {
-      setEstado({ ...estado, idMensagem: idMensagem + 1, ...esquecer(elementos, rng) });
-    },
-    revisar() {
-      const r = revisar(elementos);
-      setEstado({ ...estado, idMensagem: idMensagem + 1, ...r });
-      if (!r.elementos.some((e) => e.brilha)) return;
-      if (reduzirMovimento) apagarBrilho();
-      else animarBrilho();
-    },
     /** Semente aleatória, mantendo o nível do mar atual. */
     novoMundo() {
       recriar(sementeAleatoria(), mundo.nivelMar);
@@ -138,25 +124,11 @@ export function useWorld() {
     },
     /** (dev) Crescimentos da civilização, com o nome para o botão (natureza vem da seed). */
     crescimentos: CHAVES_DE_CIVILIZACAO.map((tipo) => ({ tipo, nome: NOMES_DE_CRESCIMENTO[tipo] })),
-    /** (dev) Aplica um evento de intensidade 1 do novo sistema de crescimento. */
+    /** O conhecimento chegando ao mapa. A composição traduz influências em eventos. */
+    aplicarEventos,
+    /** (dev) Um evento de intensidade 1, pelo mesmo caminho da produção. */
     aplicarCrescimentoDev(tipo: WorldGrowthKind) {
-      const r = aplicarEventosDeCrescimento(mundo, crescimento, estado.settlements, [{ tipo, intensidade: 1 }], rng);
-      const novo = r.adicionados[0];
-      const vila = novo?.settlementId ? r.settlements.find((s) => s.id === novo.settlementId) : undefined;
-      const ganhouFonte = r.adicionados.some((e) => e.tipo === 'fonte');
-      const mensagem = !novo
-        ? 'Não foi encontrado um local válido para esse crescimento.'
-        : vila
-          ? `${NOMES_DE_CRESCIMENTO[tipo]} cresceu. Vila: ${vila.quantidadeElementos} elementos, raio ${Math.round(vila.raio)}.` +
-            (ganhouFonte ? ' A vila ganhou uma fonte!' : '')
-          : `${NOMES_DE_CRESCIMENTO[tipo]} cresceu no mundo.`;
-      setEstado({
-        ...estado,
-        crescimento: r.elementos,
-        settlements: r.settlements,
-        mensagem,
-        idMensagem: idMensagem + 1,
-      });
+      aplicarEventos([{ tipo, intensidade: 1 }]);
     },
     /** Recebe um ponto em pixels de arte e mostra no aviso o que há naquele tile. */
     inspecionar(artX: number, artY: number) {
@@ -164,15 +136,4 @@ export function useWorld() {
       if (texto) setEstado({ ...estado, mensagem: texto, idMensagem: idMensagem + 1 });
     },
   };
-}
-
-/** Respeita a opção "Reduzir movimento" do iPhone. */
-function useReducedMotion(): boolean {
-  const [ativo, setAtivo] = useState(false);
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setAtivo);
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setAtivo);
-    return () => sub.remove();
-  }, []);
-  return ativo;
 }

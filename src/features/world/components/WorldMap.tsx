@@ -1,7 +1,7 @@
 import {
   AlphaType, Canvas, ColorType, FilterMode, Group, Image, MipmapMode, Skia,
 } from '@shopify/react-native-skia';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { StyleSheet } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
@@ -19,18 +19,28 @@ type Props = {
   altura: number;
   /** Sprites a desenhar por cima, já ordenados por y. */
   elementos: readonly RenderElement[];
-  /** 0 a 1: brilho dos elementos recém-revisados. */
-  brilho: number;
   /** Toque longo: recebe o ponto em pixels de arte. Sem essa prop, o toque longo fica desligado. */
   onLongPress?: (artX: number, artY: number) => void;
+  /**
+   * Muda de valor para pedir um repintar (ex.: quando o feed acaba de fechar).
+   * Não altera a câmera; veja `repintar()` em useMapCamera.
+   */
+  despertar?: number;
 };
 
 // "Nearest" = cada pixel vira um quadrado ao ampliar, sem suavização, em qualquer zoom
 const NITIDO = { filter: FilterMode.Nearest, mipmap: MipmapMode.None };
 
 /** Mapa em tela cheia. Arrastar e pinça só mudam a transformação do Group. */
-export function WorldMap({ terreno, caminhos, largura, altura, elementos, brilho, onLongPress }: Props) {
-  const { gesto, transformacao, paraMapa } = useMapCamera(largura, altura);
+export function WorldMap({
+  terreno, caminhos, largura, altura, elementos, onLongPress, despertar = 0,
+}: Props) {
+  const { gesto, transformacao, paraMapa, repintar } = useMapCamera(largura, altura);
+
+  // Quem cobriu o mapa avisa que saiu da frente; aqui só reenviamos a cena.
+  useEffect(() => {
+    repintar();
+  }, [despertar, repintar]);
 
   const toqueLongo = Gesture.LongPress()
     .enabled(onLongPress !== undefined)
@@ -79,7 +89,7 @@ export function WorldMap({ terreno, caminhos, largura, altura, elementos, brilho
               sampling={NITIDO}
             />
           )}
-          <WorldSprites elementos={elementos} brilho={brilho} />
+          <WorldSprites elementos={elementos} />
         </Group>
       </Canvas>
     </GestureDetector>

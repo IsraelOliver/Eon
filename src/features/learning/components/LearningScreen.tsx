@@ -3,20 +3,28 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/shared/theme/colors';
-import { ALTURA_TAB_BAR, MARGEM_TAB_BAR } from '@/shared/ui/TabBar';
+import { ESPACO_ACTION_BAR } from '@/shared/ui/ActionBar';
 
 import { useLearning } from '../hooks/useLearning';
-import type { CuriosityId } from '../engine/types';
+import type { Curiosity, CuriosityId, LearningResult } from '../engine/types';
 import { CuriosityCard } from './CuriosityCard';
 import { CuriosityReader } from './CuriosityReader';
 
 type Props = {
-  /** Avisa a composição quando a leitura abre ou fecha (a barra some durante a leitura). */
+  /** Avisa quem contém a tela quando a leitura abre ou fecha (o ✕ some durante a leitura). */
   onLeitura?: (lendo: boolean) => void;
+  /**
+   * Conhecimento NOVO acabou de ser registrado. Só dispara em `'aprendida'` —
+   * quem decide o que é repetição é o engine de learning.
+   * A composição usa isso para fazer o mundo crescer; `learning` não conhece o mundo.
+   */
+  onAprendido?: (resultado: LearningResult) => void;
+  /** Mostra "Ver no mundo" no fim da leitura. */
+  onVerMundo?: () => void;
 };
 
 /** Aba Aprender: o feed e, por cima dele, a leitura em tela cheia. */
-export function LearningScreen({ onLeitura }: Props) {
+export function LearningScreen({ onLeitura, onAprendido, onVerMundo }: Props) {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const aprendizado = useLearning();
@@ -25,12 +33,27 @@ export function LearningScreen({ onLeitura }: Props) {
   const aberta = aprendizado.curiosidades.find((cu) => cu.id === abertaId) ?? null;
   useEffect(() => onLeitura?.(aberta !== null), [aberta, onLeitura]);
 
+  // O engine registra; aqui só avisamos quem ligou, e só quando houve progresso.
+  const aprender = (curiosidade: Curiosity): LearningResult => {
+    const resultado = aprendizado.aprender(curiosidade);
+    if (resultado.status === 'aprendida') onAprendido?.(resultado);
+    return resultado;
+  };
+
+  // Ao ir ver o mundo, o aparelho fecha e a leitura volta para o feed.
+  const verMundo = onVerMundo
+    ? () => {
+        setAbertaId(null);
+        onVerMundo();
+      }
+    : undefined;
+
   return (
     <View style={[styles.tela, { backgroundColor: c.fundoFeed }]}>
       <ScrollView
         contentContainerStyle={[
           styles.conteudo,
-          { paddingTop: insets.top + 12, paddingBottom: insets.bottom + ALTURA_TAB_BAR + MARGEM_TAB_BAR * 2 },
+          { paddingTop: insets.top + 12, paddingBottom: insets.bottom + ESPACO_ACTION_BAR + 12 },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -54,7 +77,8 @@ export function LearningScreen({ onLeitura }: Props) {
           curiosidade={aberta}
           aprendida={aprendizado.jaAprendeu(aberta.id)}
           onVoltar={() => setAbertaId(null)}
-          onAprender={aprendizado.aprender}
+          onAprender={aprender}
+          onVerMundo={verMundo}
         />
       )}
     </View>

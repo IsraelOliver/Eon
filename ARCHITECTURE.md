@@ -6,7 +6,7 @@ regras, desenho e interface em camadas que só dependem "para baixo".
 ```
 app/                         → rotas do expo-router (só telas, sem lógica)
   _layout.tsx                → raiz dos gestos, barra de status e pilha sem cabeçalho
-  index.tsx                  → composição: abas Aprender/Mundo, barra flutuante e avisos
+  index.tsx                  → composição: mundo como tela-base + feed por cima (overlay)
 src/
   features/
     world/                   → tudo sobre o mundo procedural
@@ -17,7 +17,7 @@ src/
         generate.ts          → gera o mundo (semente + nível do mar como parâmetros)
         nature.ts            → decoração natural do mundo selvagem (árvores, pedras…)
         themes.ts            → (protótipo) TEMAS: onde cada tema faz algo surgir e com que nota
-        placement.ts         → (protótipo) aprender(), esquecer(), revisar() (+ semear e contagem)
+        placement.ts         → (protótipo) semear(): 3 plantas ao criar o mundo (o resto do arquivo não é mais usado)
         inspect.ts           → descreverTile(): bioma, altitude e umidade de um tile
         growth.ts            → gerarEventosDeCrescimento(): influências → eventos abstratos
         growthPlacement.ts   → colocarCrescimento(): evento → lugar válido + sprite
@@ -40,12 +40,10 @@ src/
         WorldMap.tsx         → mapa em tela cheia (Skia), gestos de câmera, toque longo
         WorldSprites.tsx     → desenha os sprites (PNG ou fallback) sobre o terreno
         ActionToast.tsx      → aviso que some sozinho (posição topo/baixo e duração por props)
-        LearnMenu.tsx        → botão de menu (inferior esquerdo) + janela "Aprender"
-        ThemeButtons.tsx     → botões dos 4 temas com contador
         WorldDevTools.tsx    → (dev) semente, nível do mar e botões de crescimento
         BiomeLegend.tsx      → (dev) legenda das cores do mapa
       hooks/
-        useWorld.ts          → estado do mundo e elementos; liga engine, render e componentes
+        useWorld.ts          → estado do mundo; aplicarEventos() é a porta do crescimento
         useMapCamera.ts      → câmera: arrastar, pinça, inércia, limites, tela→mapa
         useSpriteImages.ts   → carrega os PNGs dos sprites (useImage, ordem fixa)
     learning/                → aprendizagem: curiosidades e perfil de conhecimento
@@ -56,8 +54,9 @@ src/
         themes.ts            → NOMES_DE_TEMA: nome de cada tema na interface
       data/
         fixtures.ts          → curiosidades FICTÍCIAS só para teste
-      components/            → interface da aba Aprender (React Native, sem Skia)
-        LearningScreen.tsx   → a aba: feed + leitura por cima (estado da aberta)
+      components/            → interface do Aprender (React Native, sem Skia)
+        LearningOverlay.tsx  → o aparelho: cresce do botão e abre o feed sobre o mapa
+        LearningScreen.tsx   → a tela: feed + leitura; avisa onAprendido ao registrar
         CuriosityCard.tsx    → card do feed: pôster vertical com capa, degradê e título
         CuriosityReader.tsx  → leitura em tela cheia: conteúdo, fontes, botão APRENDI
       presentation/          → decisões de aparência que o engine não pode conhecer
@@ -67,7 +66,7 @@ src/
         useLearning.ts       → perfil da sessão; delega a decisão ao engine
     settings/                → configurações do app
       components/
-        SettingsMenu.tsx     → engrenagem + janela "Configurações" (+ seção Desenvolvedor)
+        SettingsMenu.tsx     → janela "Configurações" (+ seção Desenvolvedor)
       hooks/
         useDevMode.ts        → modo desenvolvedor: 5 toques secretos liga/desliga
   shared/                    → o que qualquer funcionalidade pode usar
@@ -75,10 +74,9 @@ src/
     domain/influence.ts      → InfluenceKey, KnowledgeInfluence: contrato learning → world
     theme/colors.ts          → cores da interface (claro/escuro)
     ui/Button.tsx            → botão reutilizável
-    ui/FloatingButton.tsx    → botão quadrado flutuante num canto (respeita a safe area)
+    ui/ActionBar.tsx         → barra de ações: cápsula central embaixo (só ícones)
     ui/Window.tsx            → janela base: fundo escurecido, fade, título, conteúdo, rodapé
     ui/Slider.tsx            → controle deslizante (avisa o valor ao soltar)
-    ui/TabBar.tsx            → barra de navegação: cápsula flutuante (genérica, sem temas)
     ui/Gradient.tsx          → degradê linear vertical (único lugar que sabe desenhar um)
     ui/icons.ts              → ícones da interface (único lugar para trocar por pixel art)
 ```
@@ -138,20 +136,20 @@ toque no botão → componente chama função recebida por props
 | Mudar o grão/textura do terreno         | `render/palette.ts` (`TEXTURA`)       |
 | Mudar o quanto o crescimento puxa para o centro | `engine/growthPlacement.ts` (`PESO_CENTRO`) |
 | Mudar a faixa do slider de nível do mar | `engine/rules.ts` (`FAIXA_NIVEL_MAR`) |
-| Mudar onde um tema faz algo surgir      | `engine/themes.ts`                    |
-| Mudar quanto o esquecimento apaga       | `engine/placement.ts`                 |
 | Mudar cores do mapa ou sprites          | `render/palette.ts`, `sprites.ts`     |
 | Mudar cores/botões da interface         | `shared/theme`, `shared/ui`           |
 | Trocar os ícones (gear, menu)           | `shared/ui/icons.ts`                  |
-| Mudar o que aparece numa janela         | `LearnMenu.tsx`, `SettingsMenu.tsx`   |
+| Mudar o que aparece numa janela         | `SettingsMenu.tsx`                    |
 | Mudar quantos toques ativam o modo dev  | `settings/hooks/useDevMode.ts`        |
 | Adicionar uma ferramenta de dev         | componente na feature + `ferramentasDev` em `app/index.tsx` |
 | Adicionar/remover um tema               | `shared/domain/themeKey.ts` (e `TEMAS` em `world/engine/themes.ts`) |
 | Adicionar um tipo de influência         | `shared/domain/influence.ts` + destino em `world/engine/growth.ts` |
 | Mudar o que aprender dá ao perfil       | `learning/engine/profile.ts`          |
-| Mudar qual aba abre primeiro            | `app/index.tsx` (`ABA_INICIAL`)       |
-| Mudar/acrescentar uma aba               | `app/index.tsx` (`ABAS`) + `shared/ui/icons.ts` |
-| Mudar o formato da barra de navegação   | `shared/ui/TabBar.tsx`                |
+| Mexer na ponte aprender → mundo         | `app/index.tsx` (`aoAprender`)        |
+| Mudar como o mundo aplica crescimento   | `world/hooks/useWorld.ts` (`aplicarEventos`) |
+| Mudar os botões da barra de baixo       | `app/index.tsx` (`acoes`) + `shared/ui/icons.ts` |
+| Mudar o formato/tamanho da barra        | `shared/ui/ActionBar.tsx`             |
+| Mudar a animação de abrir o feed        | `learning/components/LearningOverlay.tsx` |
 | Mudar as curiosidades do feed           | `learning/data/fixtures.ts`           |
 | Mudar o card do feed                    | `learning/components/CuriosityCard.tsx` |
 | Colocar a capa de uma curiosidade       | `assets/images/learning/covers/` + `learning/presentation/coverImages.ts` |
@@ -192,7 +190,7 @@ Curiosity ─registrarAprendizado─▶ LearningResult.influencias ─gerarEvent
   - `'repetida'`: o mesmo perfil — uma curiosidade nunca dá progresso duas vezes.
 - Ainda **não existe**: persistência. Os dados em `data/fixtures.ts` são fictícios.
 
-### A aba Aprender
+### A tela Aprender
 
 ```
 useLearning (perfil da sessão)
@@ -203,10 +201,10 @@ useLearning (perfil da sessão)
 - **`useLearning`** guarda o `KnowledgeProfile` da sessão em memória. Ele não
   decide nada: chama `registrarAprendizado` e guarda o perfil devolvido. Em
   `'repetida'` o perfil é o mesmo objeto, então nada muda na tela.
-- **`LearningScreen`** é a aba inteira. O feed é um `ScrollView` com padding de
-  baixo igual a `ALTURA_TAB_BAR + MARGEM_TAB_BAR` (o último card nunca fica
-  escondido pela barra). Qual curiosidade está aberta é estado dele; ele avisa a
-  composição por `onLeitura(lendo)` para a barra sumir durante a leitura.
+- **`LearningScreen`** é o conteúdo do aparelho. Qual curiosidade está aberta é
+  estado dele; ele avisa quem o contém por `onLeitura(lendo)`, e o
+  `LearningOverlay` usa isso para esconder o ✕ enquanto a leitura — que tem o
+  próprio "voltar" — está aberta.
 - **`CuriosityReader`** mostra tema, título, conteúdo, **fontes** (com
   `Linking.openURL` quando têm `url`) e o botão **APRENDI**. Depois do toque
   aparece "✓ Conhecimento adquirido." — o texto **não fala do mundo**, porque a
@@ -250,23 +248,129 @@ imagem → título → CTA → tema → selo de aprendida.
   `experimental_backgroundImage` do React Native 0.86 em vez de uma biblioteca
   nova. Trocar por `expo-linear-gradient` um dia é mexer num arquivo só.
 
-## Navegação (app/index.tsx)
+## O mundo e o aparelho (app/index.tsx)
 
-- Duas abas: **Aprender** e **Mundo**. `ABA_INICIAL`, no topo de `app/index.tsx`,
-  é o único lugar que decide qual abre primeiro (hoje: `'mundo'`).
-- **As duas abas ficam montadas o tempo todo**; a inativa some com
-  `display: 'none'`. É o que mantém o mundo, o zoom da câmera e as curiosidades
-  aprendidas vivos ao trocar de aba — remontar recriaria o mundo e o buffer do
-  terreno. Também é o motivo de `useWorld()` viver na composição, não dentro de
-  um componente que some.
-- **`shared/ui/TabBar.tsx`** é genérico (`ItemDeNavegacao<T>`): uma cápsula
-  flutuante centralizada, acima da safe area (`bottom: insets.bottom + MARGEM_TAB_BAR`),
-  que **não ocupa a largura da tela** — o mapa continua visível por baixo. O item
-  ativo ganha uma cápsula interna. `zIndex: 30`, acima das janelas (10) e dos
-  avisos (20); a leitura (40) fica acima de tudo, mas a barra já saiu.
-- Os botões flutuantes do mapa continuam nos cantos esquerdos e não colidem com a
-  cápsula. O `ActionToast` de baixo recebe `offset={ALTURA_TAB_BAR + MARGEM_TAB_BAR}`
-  para aparecer **acima** da barra.
+Não há mais abas irmãs. **O mundo é a tela-base**, sempre montada e sempre no
+layout; o feed abre **por cima** dele, como um aparelho que o jogador tira do
+bolso.
+
+```
+AppScreen
+├── camada do mundo   (fluxo normal: WorldMap + engrenagem + menu + celular + avisos)
+└── LearningOverlay   (absoluteFill por cima; fechado, é invisível e intocável)
+```
+
+- **O `WorldMap` nunca desmonta e nunca sai do layout.** Nada de `display: 'none'`
+  nele: era isso que fazia a superfície do Skia voltar vazia e o mapa aparecer
+  branco até um gesto na câmera. Por isso também `useWorld()` vive na composição:
+  abrir e fechar o feed não refaz o terreno, não recria as `SkImage`, não
+  recalcula os caminhos, não recarrega sprites e não reinicia a câmera.
+- **A barra de ações** (`shared/ui/ActionBar.tsx`) é uma cápsula flutuante
+  centralizada na borda de baixo, só com ícones: ◉ mundo, ▯ celular, ⚙︎
+  configurações. Ela **vale para o app inteiro**: é renderizada por último em
+  `app/index.tsx`, acima do mundo, do aparelho e das janelas, e nunca some. Por
+  isso o feed e a leitura reservam `ESPACO_ACTION_BAR` no rodapé.
+  O celular fica no meio de propósito — é de lá que o feed cresce, e
+  `centroDoItem()` devolve esse ponto para a animação (a barra é quem sabe o
+  próprio layout). O item ativo (`ativo`) mostra onde o jogador está: mundo ou
+  aparelho. Os ícones são provisórios (`shared/ui/icons.ts`).
+- **As janelas também ficam acima do aparelho**: `SettingsMenu` é renderizado
+  depois do `LearningOverlay`, para o ⚙︎ funcionar de qualquer tela.
+- **As janelas são controladas pela composição.** `SettingsMenu` e `LearnMenu`
+  não carregam mais o próprio botão: recebem `aberto`/`onFechar`, e `app/index.tsx`
+  guarda qual painel está aberto (um de cada vez).
+- **`LearningOverlay`** é o aparelho. Fica **sempre montado** — fechado, ele só
+  some (opacidade 0 e `pointerEvents: 'none'`), o que preserva o que já foi
+  aprendido e evita medir o feed de novo a cada abertura.
+- **A animação** é um shared value só, de 0 a 1 (`withTiming`, `Easing.out`).
+  Dele saem, por interpolação: `scaleX`/`scaleY` partindo do tamanho exato do
+  botão, `borderRadius` de 64 a 30 e a opacidade do conteúdo entrando entre 35 %
+  e 85 % do percurso — assim não se vê texto esticado. O ponto de crescimento é
+  um `transformOrigin` calculado a partir da posição real do botão. **Só
+  transform e opacidade: nenhum layout durante o movimento.**
+- **Alcance e acessibilidade andam juntos.** Com o feed aberto, a camada do mundo
+  recebe `pointerEvents="none"` + `accessibilityElementsHidden` +
+  `importantForAccessibility="no-hide-descendants"`; fechado, o overlay recebe o
+  mesmo tratamento. O que não está à vista não recebe dedo nem leitor de tela.
+- **Ao terminar de fechar, o mapa precisa reenviar a cena.** `LearningOverlay`
+  avisa por `onFechado` (no callback do `withTiming`, só quando o fechamento vai
+  até o fim), a composição incrementa `despertarMapa`, e o `WorldMap` chama
+  `repintar()`. Veja "Por que o mapa voltava em branco" para o porquê.
+
+## Por que o mapa voltava em branco
+
+Sintoma: depois de fechar o feed, o mapa às vezes aparecia vazio e só voltava
+quando o dedo mexia na câmera.
+
+O Skia **não** repinta porque a view voltou a aparecer. Ele repinta quando a cena
+é **reenviada** à view nativa — `SkiaViewApi.setJsiProperty(nativeId, "picture", …)`.
+Só dois caminhos chegam lá:
+
+| Caminho | Como dispara | Reenvia a cena? |
+| --- | --- | --- |
+| `children` do `Canvas` mudarem de **identidade** | `root.render(children)` → `container.redraw()` | sim |
+| um **shared value** usado pela cena mudar | o mapper do Reanimated → `applyUpdates` | sim |
+| `useCanvasRef().redraw()` | `SkiaViewApi.requestRedraw(nativeId)` | **não** — só pede para redesenhar a picture que a view já tem |
+
+Daí os dois fatos do sintoma:
+
+- **arrastar o mapa funcionava** porque `x`/`y`/`escala` mudam, o
+  `useDerivedValue` `transformacao` é reescrito e o mapper reenvia a cena;
+- **fechar o feed não funcionava** porque, com o **React Compiler**, o JSX dentro
+  do `Canvas` é memoizado: sem mudança de props, `children` mantém a mesma
+  identidade, o `useLayoutEffect` de `root.render` não roda e nada é reenviado.
+  A re-renderização do React existia; o reenvio, não.
+
+A correção usa o mesmo caminho do arrastar, sem mexer na câmera:
+`useMapCamera` tem um shared value `revisao` que entra na conta da transformação
+somando **zero** — a câmera fica idêntica, mas o valor derivado é reescrito e a
+cena é reenviada. `repintar()` só incrementa esse contador.
+
+O `useCanvasRef`/`redraw()` foi **removido**: agora está documentado que ele não
+resolve este caso.
+
+## A ponte: aprender → mundo
+
+```
+Curiosity ─registrarAprendizado─▶ LearningResult
+                                      │ (só 'aprendida')
+                          app/index.tsx  aoAprender()
+                                      │
+                    gerarEventosDeCrescimento(influencias)
+                                      │
+                         world.aplicarEventos(eventos)
+                                      │
+                    aplicarEventosDeCrescimento(...)  → casas, fonte, caminhos…
+```
+
+- **A ponte mora em `app/index.tsx`** e em nenhum outro lugar. `learning` não
+  importa `world` e `world` não importa `learning`; só a composição vê as duas.
+- **A composição não interpreta nada.** Ela não sabe que história vira casa nem
+  que astronomia vira observatório — passa a lista de influências inteira e o
+  engine do mundo decide. Qualquer `if (tema === …)` em `app/` é erro.
+- **Quem diz o que é novo é o engine de learning.** `LearningScreen` embrulha
+  `aprender` e só chama `onAprendido` quando o resultado é `'aprendida'`.
+  Curiosidade repetida devolve `'repetida'` e a ponte volta na hora: nenhuma
+  influência, nenhum evento, nenhuma construção.
+- **O mundo cresce na hora do APRENDI**, com o aparelho ainda aberto.
+  "Ver no mundo" não faz o mundo crescer: ele só fecha o aparelho (com a mesma
+  animação de sempre) para revelar o que já aconteceu. Navegação não é regra de
+  domínio.
+- **`useWorld.aplicarEventos(eventos)`** é a única porta de entrada, usada tanto
+  pela produção quanto pelo modo dev (`aplicarCrescimentoDev` monta um evento de
+  intensidade 1 e chama a mesma função). Ela lê o estado **dentro** do updater
+  (`setEstado((s) => …)`), para duas aprendizagens seguidas não se atropelarem.
+  O `rng` tem estado, então o updater precisa rodar uma vez só — hoje roda,
+  porque o app não usa `StrictMode`.
+
+### Comportamento temporário (natureza)
+
+As fixtures atuais têm influência de `vegetacao`, que ainda cai em
+`crescerVegetacao` (ver o aviso em `world/engine/growth.ts`): aprender a
+curiosidade de natureza faz nascer **uma árvore**, não uma construção. Isso é o
+sistema legado, mantido de propósito até a natureza ser redesenhada — o mundo
+selvagem pertence à seed, e conhecimento de natureza deveria virar coisa
+construída (jardim, pomar, viveiro). Não mexa nisso sem tratar o tema inteiro.
 
 ## Crescimento do mundo (world/engine/growth.ts)
 
@@ -602,9 +706,9 @@ nada do que recebe.
 
 ## Interface sobre o mapa
 
-- A aba Mundo é só o mapa. Por cima dele há dois `FloatingButton` (engrenagem no
-  canto superior esquerdo, menu no inferior esquerdo), dois `ActionToast` e a
-  barra de navegação (veja "Navegação").
+- A tela-base é só o mapa. Por cima dele ficam a barra de ações (cápsula
+  central embaixo) e dois `ActionToast` — o de baixo posicionado acima da barra.
+  O feed abre por cima de tudo isso (veja "O mundo e o aparelho").
 - **Toda janela usa `shared/ui/Window.tsx`.** Ela é uma camada da própria tela
   (`Animated.View` com `FadeIn`/`FadeOut` e `zIndex: 10`), não um `Modal`. Motivos:
   avisos precisam aparecer **por cima** da janela aberta, e gestos do

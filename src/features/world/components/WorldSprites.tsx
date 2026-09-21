@@ -1,5 +1,5 @@
 import {
-  AlphaType, ColorMatrix, ColorType, FilterMode, Group, Image, MipmapMode, Skia, type SkImage,
+  AlphaType, ColorType, FilterMode, Group, Image, MipmapMode, Skia, type SkImage,
 } from '@shopify/react-native-skia';
 import { useRef } from 'react';
 
@@ -14,21 +14,17 @@ const NITIDO = { filter: FilterMode.Nearest, mipmap: MipmapMode.None };
 
 const OPACIDADE_DESBOTADO = 0.5;
 
-/** Clareia o sprite para a animação da revisão (k de 0 a 1). */
-const clarear = (k: number) => [1, 0, 0, 0, k * 0.35, 0, 1, 0, 0, k * 0.35, 0, 0, 1, 0, k * 0.2, 0, 0, 0, 1, 0];
-
 type Buffer = { imagem: SkImage; largura: number; altura: number; deslocX: number; deslocY: number };
 
 /** Fallback dos sprites sem PNG (torre, observatorio, escavacao): desenho em caracteres. */
-function obterBuffer(cache: Map<string, Buffer>, el: RenderElement, brilho: number): Buffer | null {
+function obterBuffer(cache: Map<string, Buffer>, el: RenderElement): Buffer | null {
   const desbotado = el.desbotado === true;
-  const luz = el.brilha ? Math.round(brilho * 10) / 10 : 0;
-  const chave = `${el.tipo}|${desbotado ? 1 : 0}|${luz}`;
+  const chave = `${el.tipo}|${desbotado ? 1 : 0}`;
 
   const guardada = cache.get(chave);
   if (guardada) return guardada;
 
-  const sprite = construirSprite(el.tipo, { desbotado, brilho: luz });
+  const sprite = construirSprite(el.tipo, { desbotado });
   const imagem = Skia.Image.MakeImage(
     { width: sprite.largura, height: sprite.altura, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul },
     Skia.Data.fromBytes(sprite.pixels),
@@ -50,14 +46,13 @@ function obterBuffer(cache: Map<string, Buffer>, el: RenderElement, brilho: numb
 type Props = {
   /** Já ordenados por y: quem está mais abaixo é desenhado por cima. */
   elementos: readonly RenderElement[];
-  brilho: number;
 };
 
 /**
  * Desenha os sprites por cima do terreno, como imagens separadas.
  * Mudar elementos não mexe no buffer nem na imagem do terreno.
  */
-export function WorldSprites({ elementos, brilho }: Props) {
+export function WorldSprites({ elementos }: Props) {
   const pngs = useSpriteImages();
   const cache = useRef(new Map<string, Buffer>()).current;
 
@@ -65,7 +60,6 @@ export function WorldSprites({ elementos, brilho }: Props) {
     <>
       {elementos.map((el, i) => {
         const chave = `${el.tipo}-${el.x}-${el.y}-${i}`;
-        const luz = el.brilha ? brilho : 0;
         const chaveImagem = imagemDoElemento(el);
         const png = chaveImagem ? pngs[chaveImagem] : null;
 
@@ -77,14 +71,12 @@ export function WorldSprites({ elementos, brilho }: Props) {
           const y = el.y * ART + ART - altura;
           return (
             <Group key={chave} opacity={el.desbotado ? OPACIDADE_DESBOTADO : 1}>
-              <Image image={png} x={x} y={y} width={largura} height={altura} fit="fill" sampling={NITIDO}>
-                {luz > 0 && <ColorMatrix matrix={clarear(luz)} />}
-              </Image>
+              <Image image={png} x={x} y={y} width={largura} height={altura} fit="fill" sampling={NITIDO} />
             </Group>
           );
         }
 
-        const buffer = obterBuffer(cache, el, brilho);
+        const buffer = obterBuffer(cache, el);
         if (!buffer) return null;
         return (
           <Image
