@@ -1,7 +1,7 @@
 import {
-  AlphaType, Canvas, ColorType, FilterMode, Group, Image, MipmapMode, Skia,
+  AlphaType, Canvas, ColorType, FilterMode, Group, Image, MipmapMode, Skia, type SkImage,
 } from '@shopify/react-native-skia';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
@@ -71,6 +71,28 @@ export function WorldMap({
         caminhos.largura * 4,
       ),
     [caminhos],
+  );
+
+  /*
+   * Ao sair da árvore, soltamos as imagens grandes em vez de esperar o coletor.
+   * São 5,3 MB nativos cada; na recriação do mundo, esperar o GC deixava a cena
+   * velha e a nova vivas ao mesmo tempo, e o iOS fechava o app.
+   *
+   * `dispose()` só larga ESTA referência (o `sk_sp` é contado): se a última cena
+   * desenhada ainda apontar para a imagem, ela sobrevive até aquela cena sair.
+   * Por isso é seguro aqui, e só aqui — depois disto ninguém mais lê a imagem.
+   */
+  const imagens = useRef<{ terreno: SkImage | null; caminhos: SkImage | null }>({
+    terreno: null,
+    caminhos: null,
+  });
+  imagens.current = { terreno: imagemTerreno, caminhos: imagemCaminhos || null };
+  useEffect(
+    () => () => {
+      imagens.current.terreno?.dispose();
+      imagens.current.caminhos?.dispose();
+    },
+    [],
   );
 
   return (

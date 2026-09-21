@@ -4,8 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gradient } from '@/shared/ui/Gradient';
 
 import { NOMES_DE_TEMA } from '../engine/themes';
-import type { Curiosity } from '../engine/types';
-import { capaDe } from '../presentation/coverImages';
+import type { CuriosityEntry } from '../data/curiosities';
 import { CAPA_DO_TEMA } from '../presentation/coverTheme';
 
 /** Proporção do pôster: alto e estreito, como capa de conteúdo. */
@@ -25,14 +24,14 @@ const BORDA_VIDRO = 'rgba(255,255,255,0.28)';
 const DEGRADE = 'rgba(0,0,0,0) 38%, rgba(0,0,0,0.35) 58%, rgba(0,0,0,0.72) 78%, rgba(0,0,0,0.92) 100%';
 
 type Props = {
-  curiosidade: Curiosity;
+  curiosidade: CuriosityEntry;
   aprendida: boolean;
   onLer: () => void;
 };
 
 /** Card do feed: uma capa. A imagem manda; o texto se apoia no degradê. */
 export function CuriosityCard({ curiosidade, aprendida, onLer }: Props) {
-  const capa = capaDe(curiosidade.id);
+  const capa = curiosidade.capa;
   const tema = CAPA_DO_TEMA[curiosidade.tema];
 
   return (

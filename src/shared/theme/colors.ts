@@ -15,6 +15,9 @@ const light = {
   /** Fundo do feed e dos cards de leitura. */
   fundoFeed: '#eef3f4',
   cartao: '#ffffff',
+  /** Ação destrutiva (recomeçar jornada). */
+  perigo: '#b3261e',
+  perigoTexto: '#ffffff',
   astro: '#5b5fc7',
   hist: '#b5523b',
   geo: '#8a5a34',
@@ -36,6 +39,8 @@ const dark: Colors = {
   barraTextoAtivo: '#e6eef3',
   fundoFeed: '#0c1826',
   cartao: '#152537',
+  perigo: '#d15b52',
+  perigoTexto: '#1a0b09',
   astro: '#8a8ef0',
   hist: '#e0806a',
   geo: '#c89464',

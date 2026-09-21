@@ -35,6 +35,35 @@ export interface SaveV1 {
 export type SaveData = SaveV1;
 
 // ---------------------------------------------------------------------
+// O que é seguro gravar.
+// ---------------------------------------------------------------------
+
+export interface DecisaoDeSave {
+  /** O último estado coerente. É o que o app grava se sair de cena agora. */
+  seguro: SaveV1;
+  /** Gravar já? Só quando o estado está coerente. */
+  gravar: boolean;
+}
+
+/**
+ * Decide o que fazer com o estado atual.
+ *
+ * Enquanto o mundo está sendo recriado, o estado é incoerente **de propósito**:
+ * ao recomeçar a jornada o conhecimento já foi apagado, mas o mundo antigo
+ * ainda não foi trocado. Gravar esse meio do caminho deixaria no disco uma
+ * jornada que nunca existiu — conhecimento vazio com uma civilização inteira,
+ * ou o contrário.
+ *
+ * Então, durante a recriação, o último save seguro **não avança**: ele continua
+ * apontando para a jornada coerente anterior, e é ela que vai para o disco se o
+ * app for fechado no meio.
+ */
+export function decidirSave(atual: SaveV1, seguroAnterior: SaveV1, gerando: boolean): DecisaoDeSave {
+  if (gerando) return { seguro: seguroAnterior, gravar: false };
+  return { seguro: atual, gravar: true };
+}
+
+// ---------------------------------------------------------------------
 // Conferência do que veio do disco.
 //
 // O que está gravado pode ter sido escrito por uma versão antiga do app, ter

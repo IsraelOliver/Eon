@@ -11,7 +11,7 @@ export interface EstiloDeCapa {
 
 /**
  * Capa provisória de cada tema, usada enquanto a curiosidade não tem imagem
- * própria em `coverImages.ts`. O card nunca fica branco, e a troca por uma foto
+ * própria em `data/curiosities.ts`. O card nunca fica branco, e a troca por uma foto
  * real não muda nada no layout.
  */
 export const CAPA_DO_TEMA: Record<ThemeKey, EstiloDeCapa> = {

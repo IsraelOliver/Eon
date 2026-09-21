@@ -13,7 +13,7 @@ import { WorldMap } from '@/features/world/components/WorldMap';
 import { gerarEventosDeCrescimento } from '@/features/world/engine/growth';
 import { useLearning } from '@/features/learning/hooks/useLearning';
 import { useWorld } from '@/features/world/hooks/useWorld';
-import { VERSAO_DO_SAVE, type SaveV1 } from '@/persistence/save';
+import { VERSAO_DO_SAVE, decidirSave, type SaveV1 } from '@/persistence/save';
 import { carregarSave, salvarSave } from '@/persistence/storage';
 import { useColors } from '@/shared/theme/colors';
 import { ActionBar, centroDoItem, type AcaoDaBarra } from '@/shared/ui/ActionBar';
@@ -63,6 +63,7 @@ export default function AppScreen() {
  * já nascem com o estado certo — e o autosave nunca roda antes da hidratação.
  */
 function Jogo({ save }: { save: SaveV1 | null }) {
+  const c = useColors();
   const [configAberto, setConfigAberto] = useState(false);
   const [aprenderAberto, setAprenderAberto] = useState(false);
   /** Sobe quando o feed acaba de sair da frente: o mapa reenvia a cena ao Skia. */
@@ -104,6 +105,23 @@ function Jogo({ save }: { save: SaveV1 | null }) {
     world.aplicarEventos(gerarEventosDeCrescimento(resultado.influencias));
   };
 
+  /**
+   * A primeira curiosidade consolida a jornada: a partir daí este mundo é a
+   * história da pessoa, e trocar de mundo passa a exigir recomeçar tudo.
+   * Derivado do perfil de propósito — não é gravado no save.
+   */
+  const mundoConsolidado = aprendizado.perfil.aprendidas.length > 0;
+
+  /**
+   * Recomeçar: apaga conhecimento e mundo **juntos**. As duas mudanças saem no
+   * mesmo evento, então o React as agrupa num render só, e o mundo novo nasce
+   * pelo mesmo caminho seguro de sempre (fases + liberação das imagens).
+   */
+  const recomecarJornada = useCallback(() => {
+    aprendizado.reiniciar();
+    world.novoMundo();
+  }, [aprendizado, world]);
+
   const acoes: readonly AcaoDaBarra[] = [
     { chave: 'mundo', icone: ICONS.mundo, rotulo: 'Ver o mundo', onPress: fecharAprender },
     { chave: 'celular', icone: ICONS.celular, rotulo: 'Abrir Aprender', onPress: abrirAprender },
@@ -123,22 +141,36 @@ function Jogo({ save }: { save: SaveV1 | null }) {
     [world.estadoPersistivel, aprendizado.perfil],
   );
 
-  // Autosave. Grava em fila, sem bloquear a interface.
-  useEffect(() => {
-    void salvarSave(saveAtual);
-  }, [saveAtual]);
+  /**
+   * O último estado coerente — é ele, e só ele, que vai para o disco.
+   * Começa com o estado hidratado, que por definição é coerente.
+   */
+  const ultimoSaveSeguro = useRef(saveAtual);
 
   /*
-   * Rede de segurança ao sair do app. A ref é atualizada a cada save novo, para
-   * o listener não gravar o primeiro estado da sessão. É a mesma função (e a
-   * mesma fila) do autosave: não existe um segundo caminho de gravação.
+   * Autosave. Grava em fila, sem bloquear a interface.
+   *
+   * Atualizar o snapshot seguro e gravar são a MESMA decisão (`decidirSave`),
+   * no mesmo lugar: enquanto o mundo está sendo recriado, nenhum dos dois
+   * acontece. Foi por isso que o snapshot saiu do corpo do componente — lá ele
+   * era reatribuído a cada render, inclusive no meio de um reset, e o listener
+   * de `AppState` podia gravar conhecimento vazio com o mundo antigo.
    */
-  const ultimoSave = useRef(saveAtual);
-  ultimoSave.current = saveAtual;
+  useEffect(() => {
+    const decisao = decidirSave(saveAtual, ultimoSaveSeguro.current, world.gerando);
+    ultimoSaveSeguro.current = decisao.seguro;
+    if (decisao.gravar) void salvarSave(decisao.seguro);
+  }, [saveAtual, world.gerando]);
 
+  /*
+   * Rede de segurança ao sair do app. Grava **sempre o snapshot seguro**, nunca
+   * o estado atual: se o app sair de cena no meio de uma recriação, o disco
+   * fica com a jornada anterior inteira. É a mesma função (e a mesma fila) do
+   * autosave: não existe um segundo caminho de gravação.
+   */
   useEffect(() => {
     const assinatura = AppState.addEventListener('change', (estado) => {
-      if (estado === 'inactive' || estado === 'background') void salvarSave(ultimoSave.current);
+      if (estado === 'inactive' || estado === 'background') void salvarSave(ultimoSaveSeguro.current);
     });
     return () => assinatura.remove();
   }, []);
@@ -153,15 +185,26 @@ function Jogo({ save }: { save: SaveV1 | null }) {
         accessibilityElementsHidden={aprenderAberto}
         importantForAccessibility={aprenderAberto ? 'no-hide-descendants' : 'auto'}
       >
-        <WorldMap
-          terreno={world.terreno}
-          caminhos={world.caminhos}
-          elementos={world.elementosParaDesenho}
-          largura={world.largura}
-          altura={world.altura}
-          onLongPress={dev.ativo ? world.inspecionar : undefined}
-          despertar={despertarMapa}
-        />
+        {/*
+          * Durante a recriação o mapa SAI da árvore: é assim que a cena antiga
+          * (e os 5,3 MB da imagem dela) some antes de a nova ser alocada. Sem
+          * isso o iPhone fechava o app ao desenhar as duas juntas.
+          */}
+        {world.gerando ? (
+          <View style={[styles.tela, styles.carregando, { backgroundColor: c.bg }]}>
+            <ActivityIndicator color={c.ink} />
+          </View>
+        ) : (
+          <WorldMap
+            terreno={world.terreno}
+            caminhos={world.caminhos}
+            elementos={world.elementosParaDesenho}
+            largura={world.largura}
+            altura={world.altura}
+            onLongPress={dev.ativo ? world.inspecionar : undefined}
+            despertar={despertarMapa}
+          />
+        )}
         {/* Avisos por último: ficam acima das janelas */}
         <ActionToast mensagem={world.mensagem} id={world.idMensagem} />
         <ActionToast mensagem={dev.aviso.mensagem} id={dev.aviso.id} position="top" duration={3000} />
@@ -179,7 +222,8 @@ function Jogo({ save }: { save: SaveV1 | null }) {
       <SettingsMenu
         aberto={configAberto}
         onFechar={fecharConfiguracoes}
-        onNovoMundo={world.novoMundo}
+        onNovoMundo={mundoConsolidado ? undefined : world.novoMundo}
+        onRecomecarJornada={recomecarJornada}
         devAtivo={dev.ativo}
         onToqueSecreto={dev.registrarToque}
         ferramentasDev={

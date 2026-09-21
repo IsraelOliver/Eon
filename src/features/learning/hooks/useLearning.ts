@@ -1,15 +1,17 @@
 import { useState } from 'react';
 
-import { CURIOSIDADES_DE_TESTE } from '../data/fixtures';
+import { CURIOSIDADES, type CuriosityEntry } from '../data/curiosities';
 import { criarPerfilVazio, registrarAprendizado } from '../engine/profile';
 import type { Curiosity, CuriosityId, KnowledgeProfile, LearningResult } from '../engine/types';
 
 /** O que a interface precisa para mostrar e registrar aprendizado. */
 export interface Aprendizado {
-  curiosidades: readonly Curiosity[];
+  curiosidades: readonly CuriosityEntry[];
   perfil: KnowledgeProfile;
   jaAprendeu: (id: CuriosityId) => boolean;
   aprender: (curiosidade: Curiosity) => LearningResult;
+  /** Esquece tudo: recomeçar a jornada. Quem coordena com o mundo é a composição. */
+  reiniciar: () => void;
 }
 
 /**
@@ -26,14 +28,17 @@ export function useLearning(perfilInicial?: KnowledgeProfile | null): Aprendizad
   const aprendidas = new Set<CuriosityId>(perfil.aprendidas);
 
   return {
-    /** Por enquanto, as curiosidades fictícias de data/fixtures.ts. */
-    curiosidades: CURIOSIDADES_DE_TESTE as readonly Curiosity[],
+    /** O catálogo em data/curiosities.ts — a única fonte de conteúdo. */
+    curiosidades: CURIOSIDADES,
     perfil,
     jaAprendeu: (id: CuriosityId) => aprendidas.has(id),
     aprender(curiosidade: Curiosity): LearningResult {
       const resultado = registrarAprendizado(perfil, curiosidade);
       setPerfil(resultado.perfil); // em 'repetida' é o mesmo perfil: nada muda
       return resultado;
+    },
+    reiniciar() {
+      setPerfil(criarPerfilVazio());
     },
   };
 }

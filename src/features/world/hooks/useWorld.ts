@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { gerarMundo } from '../engine/generate';
 import { CHAVES_DE_CIVILIZACAO, NOMES_DE_CRESCIMENTO } from '../engine/growth';
@@ -55,9 +55,10 @@ function mensagemDeCrescimento(eventos: readonly WorldGrowthEvent[], r: GrowthRe
 }
 
 function criarEstado(idMensagem: number, seed: number, nivelMar: number): Estado {
+  const mundo = gerarMundo(seed, nivelMar);
   // A natureza vem da seed; a civilização começa do zero e é o conhecimento que a constrói.
   return {
-    mundo: gerarMundo(seed, nivelMar),
+    mundo,
     crescimento: [],
     settlements: [],
     growthSequence: 0,
@@ -91,6 +92,8 @@ export function useWorld(salvo?: WorldSnapshot | null) {
   const [estado, setEstado] = useState<Estado>(() =>
     salvo ? restaurarEstado(salvo) : criarEstado(0, sementeAleatoria(), REGRAS.nivelMar),
   );
+  /** Recriação pedida e ainda não executada. Enquanto existe, o mapa sai da tela. */
+  const [pedido, setPedido] = useState<{ seed: number; nivelMar: number } | null>(null);
   const { mundo, crescimento, settlements, growthSequence, mensagem, idMensagem } = estado;
 
   // buffer pesado: só é refeito quando o mundo muda
@@ -141,12 +144,39 @@ export function useWorld(salvo?: WorldSnapshot | null) {
     });
   }
 
+  /**
+   * Recriar o mundo é feito em duas fases, e isso é essencial.
+   *
+   * Fazendo tudo de uma vez, o mundo velho e o novo ficavam vivos ao mesmo
+   * tempo: dois `World` (~3,5 MB cada), dois buffers RGBA de 5,3 MB e duas
+   * `SkImage` com 5,3 MB nativos cada. O iPhone fechava o app no commit da cena
+   * nova — depois de `MakeImage`, ao desenhar.
+   *
+   * Agora: fase 1 só marca o pedido, o que **tira o mapa da árvore** (quem lê
+   * `gerando` é a composição) e libera as imagens no desmonte. Fase 2 roda no
+   * quadro seguinte, com a superfície antiga já fora do caminho.
+   */
   function recriar(seed: number, nivelMar: number) {
-    setEstado(criarEstado(idMensagem + 1, seed, nivelMar));
+    if (pedido) return; // já há uma recriação em curso
+    setPedido({ seed, nivelMar });
   }
+
+  useEffect(() => {
+    if (!pedido) return;
+    // Um quadro: o efeito roda logo após o commit do React, mas a remoção da
+    // view nativa acontece na UI thread. Esperar o frame garante que a
+    // superfície antiga saiu antes de alocarmos a nova.
+    const quadro = requestAnimationFrame(() => {
+      setEstado(criarEstado(idMensagem + 1, pedido.seed, pedido.nivelMar));
+      setPedido(null);
+    });
+    return () => cancelAnimationFrame(quadro);
+  }, [pedido, idMensagem]);
 
   return {
     estadoPersistivel,
+    /** Recriando: a composição tira o mapa da árvore e mostra o carregando. */
+    gerando: pedido !== null,
     terreno,
     caminhos: camadaCaminhos,
     elementosParaDesenho: paraDesenho,

@@ -11,24 +11,30 @@ type Props = {
   swatch?: string;
   /** Valor curto à direita, como um contador. */
   badge?: string | number;
+  /** 'destructive': ação que apaga coisas. Fundo vermelho, texto de alto contraste. */
+  variant?: 'default' | 'destructive';
   style?: StyleProp<ViewStyle>;
 };
 
-export function Button({ label, onPress, color, swatch, badge, style }: Props) {
+export function Button({ label, onPress, color, swatch, badge, variant = 'default', style }: Props) {
   const c = useColors();
+  const destrutivo = variant === 'destructive';
+  const corDoTexto = destrutivo ? c.perigoTexto : c.ink;
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => [
         styles.base,
-        { borderColor: color ?? c.ink, backgroundColor: pressed ? c.pressed : 'transparent' },
+        destrutivo
+          ? { borderColor: c.perigo, backgroundColor: c.perigo, opacity: pressed ? 0.8 : 1 }
+          : { borderColor: color ?? c.ink, backgroundColor: pressed ? c.pressed : 'transparent' },
         style,
       ]}
     >
       {swatch && <View style={[styles.swatch, { backgroundColor: swatch }]} />}
-      <Text style={[styles.label, { color: c.ink }]}>{label}</Text>
-      {badge !== undefined && <Text style={[styles.badge, { color: c.ink }]}>{badge}</Text>}
+      <Text style={[styles.label, { color: corDoTexto }]}>{label}</Text>
+      {badge !== undefined && <Text style={[styles.badge, { color: corDoTexto }]}>{badge}</Text>}
     </Pressable>
   );
 }

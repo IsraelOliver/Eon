@@ -51,14 +51,14 @@ src/
         profile.ts           → criarPerfilVazio(), registrarAprendizado()
         themes.ts            → NOMES_DE_TEMA: nome de cada tema na interface
       data/
-        fixtures.ts          → curiosidades FICTÍCIAS só para teste
+        curiosities.ts       → CATÁLOGO: a única fonte de conteúdo (você edita aqui)
+        validarCuriosidades.ts → confere o catálogo (ids repetidos, campo vazio)
       components/            → interface do Aprender (React Native, sem Skia)
         LearningOverlay.tsx  → o aparelho: cresce do botão e abre o feed sobre o mapa
         LearningScreen.tsx   → a tela: feed + leitura; avisa onAprendido ao registrar
         CuriosityCard.tsx    → card do feed: pôster vertical com capa, degradê e título
         CuriosityReader.tsx  → leitura em tela cheia: conteúdo, fontes, botão APRENDI
       presentation/          → decisões de aparência que o engine não pode conhecer
-        coverImages.ts       → curiosidade → imagem local (único lugar dos require)
         coverTheme.ts        → capa provisória por tema (cor + símbolo)
       hooks/
         useLearning.ts       → perfil da sessão; delega a decisão ao engine
@@ -157,9 +157,9 @@ toque no botão → componente chama função recebida por props
 | Mudar os botões da barra de baixo       | `app/index.tsx` (`acoes`) + `shared/ui/icons.ts` |
 | Mudar o formato/tamanho da barra        | `shared/ui/ActionBar.tsx`             |
 | Mudar a animação de abrir o feed        | `learning/components/LearningOverlay.tsx` |
-| Mudar as curiosidades do feed           | `learning/data/fixtures.ts`           |
+| Acrescentar/editar uma curiosidade      | `learning/data/curiosities.ts` (só isso) |
 | Mudar o card do feed                    | `learning/components/CuriosityCard.tsx` |
-| Colocar a capa de uma curiosidade       | `assets/images/learning/covers/` + `learning/presentation/coverImages.ts` |
+| Colocar a capa de uma curiosidade       | `assets/curiosities/` + campo `capa` no catálogo |
 | Mudar a capa provisória de um tema      | `learning/presentation/coverTheme.ts` |
 | Mudar a força do degradê do card        | `learning/components/CuriosityCard.tsx` (`DEGRADE`) |
 | Mudar o formato do pôster               | `learning/components/CuriosityCard.tsx` (`PROPORCAO`, `RAIO`) |
@@ -195,7 +195,9 @@ Curiosity ─registrarAprendizado─▶ LearningResult.influencias ─gerarEvent
   - `'aprendida'`: novo perfil + `influencias` ganhas agora (a entrada futura para
     eventos de crescimento do mundo);
   - `'repetida'`: o mesmo perfil — uma curiosidade nunca dá progresso duas vezes.
-- Ainda **não existe**: persistência. Os dados em `data/fixtures.ts` são fictícios.
+- As curiosidades são **conteúdo declarativo**: vivem em `data/curiosities.ts` e
+  acrescentar uma não exige mexer em engine, componente nem persistência. As três
+  de hoje ainda são fictícias, só para o app rodar.
 
 ### A tela Aprender
 
@@ -239,15 +241,16 @@ imagem → título → CTA → tema → selo de aprendida.
 └──────────────┘
 ```
 
-- **`presentation/coverImages.ts`** é o único lugar que liga uma curiosidade a um
-  arquivo. Fica fora do `engine` de propósito: `Curiosity` não sabe que existem
-  imagens, então trocar todas as capas não toca em regra nenhuma. Os `require` são
-  estáticos (o Metro precisa vê-los) e precisam apontar para arquivos existentes.
-  O Metro empacota `jpg`/`png`/`webp`/`svg`, mas **não `.avif`** — converta antes.
+- **A capa vive no próprio bloco da curiosidade**, no campo `capa`. O tipo puro
+  `Curiosity` continua sem imagem: quem carrega a capa é `CuriosityEntry`, do
+  catálogo — o engine nunca vê imagem, e mesmo assim se cadastra tudo num lugar
+  só. Os `require` são estáticos (o Metro precisa vê-los) e precisam apontar para
+  arquivos existentes. O Metro empacota `jpg`/`png`/`webp`/`svg`, mas **não
+  `.avif`** — converta antes.
 - Sem capa registrada, o card usa a **capa do tema** (`presentation/coverTheme.ts`):
   cor + símbolo grande e apagado. O layout é o mesmo, então colocar a imagem
-  depois não muda nada de posição. Os arquivos vão em
-  `assets/images/learning/covers/` (veja o README de lá).
+  depois não muda nada de posição. Os arquivos vão em `assets/curiosities/`
+  (veja o README de lá).
 - O texto do card é **branco nos dois modos** (claro e escuro), porque vive sempre
   sobre imagem escurecida — por isso não sai de `shared/theme/colors.ts`. O título
   ainda leva uma sombra suave, para o caso de uma capa muito clara.
@@ -343,9 +346,15 @@ hidratação**.
 `world.estadoPersistivel` e `aprendizado.perfil`, e um efeito grava quando essa
 referência muda. Ou seja, grava quando muda semente, nível do mar, crescimento,
 vilas, `growthSequence` ou perfil — e **não** grava por abrir o aparelho, animar,
-dar zoom, mostrar aviso ou alternar telas. Ao ir para segundo plano
-(`AppState`), o último save é gravado de novo pela **mesma função e a mesma
-fila** (uma ref guarda o mais recente, para não gravar estado velho).
+dar zoom, mostrar aviso ou alternar telas.
+
+**O último save seguro.** `decidirSave` responde duas coisas de uma vez: qual é
+o último estado **coerente** e se dá para gravar agora. Enquanto
+`world.gerando`, a resposta é "o anterior" e "não" — então o snapshot seguro não
+avança durante uma recriação. Ao ir para segundo plano (`AppState`), o app grava
+**esse snapshot, nunca o estado atual**, pela mesma função e a mesma fila do
+autosave. Se o app sair de cena no meio de um reset, o disco fica com a jornada
+anterior inteira.
 
 **Escritas em fila:** `salvarSave` encadeia promessas, então duas gravações
 seguidas terminam na ordem pedida e a mais nova nunca perde para a mais velha.
@@ -392,6 +401,80 @@ rngDeCrescimento(mundo.seed, growthSequence)  →  mulberry32(combinarSementes(�
   do caso C prova.
 - O único sorteio que sobrou no mundo é `Math.random()` em `sementeAleatoria()`,
   e só na **criação**: a semente sorteada é guardada e tudo mais sai dela.
+
+## A jornada consolida o mundo
+
+Enquanto a pessoa não aprendeu nada, o mundo é só um cenário que ela pode
+trocar à vontade. A **primeira curiosidade aprendida** transforma aquele mundo
+na jornada dela.
+
+```
+aprendidas.length === 0  → Configurações mostram "Novo mundo"
+aprendidas.length >= 1   → jornada consolidada: só "Recomeçar jornada"
+```
+
+- **A fonte de verdade é o conhecimento**, não a quantidade de casas, a
+  existência de vila nem a `growthSequence`. Assim a regra sobrevive a qualquer
+  mudança futura no que uma curiosidade faz crescer.
+- **`mundoConsolidado` não é gravado**: é derivado de
+  `perfil.aprendidas.length > 0`, calculado na composição. O save continua na
+  versão 1, sem campo novo.
+- **A regra não é só visual.** Depois de consolidar, `app/index.tsx` deixa de
+  passar `onNovoMundo` ao `SettingsMenu`: a ação não existe, não é só um botão
+  escondido.
+- **Recomeçar jornada** apaga junto: conhecimento, perfil, civilização, vilas,
+  caminhos, `growthSequence` e o mundo. Nasce outra semente sorteada, mundo
+  selvagem, perfil vazio, sequência em 0. Pede confirmação na própria janela,
+  com o botão vermelho (`Button variant="destructive"`), numa "Zona de perigo"
+  separada dos controles do dia a dia.
+- **Nada de estado híbrido no disco.** Recomeçar muda o perfil no mesmo evento
+  em que pede o mundo novo, mas a troca do mundo acontece em fases — e no meio
+  existiria um instante de "perfil vazio + mundo antigo". Por isso **o autosave
+  é suspenso enquanto `world.gerando`**: se o app morrer no meio, o disco
+  continua com a jornada anterior inteira; quando o mundo novo fica pronto,
+  grava-se uma jornada coerente, uma vez só.
+- **Recomeçar usa o mesmo caminho seguro** de recriação (fases, `dispose` das
+  imagens, carregando, sem reentrância). Nada de atalho síncrono.
+- **O modo desenvolvedor fura a regra de propósito**: semente e nível do mar
+  continuam disponíveis mesmo em jornada consolidada, porque são ferramentas
+  de teste e estão atrás dos 5 toques secretos.
+- **Guardar jornadas antigas fica para depois.** Hoje o save é um só; não há
+  slots, lista de mundos nem histórico.
+
+## Recriar o mundo é em duas fases
+
+Semente nova, semente digitada e nível do mar recriam o mundo inteiro — e isso
+fechava o app no iPhone. Os marcos mostraram que a morte era **depois** de
+`Skia.Image.MakeImage`, no commit/desenho da cena nova.
+
+A conta explica: cada geração custa ~3,5 MB de `World` (com o `tipo[]` de
+153.600 referências), 5,3 MB do buffer RGBA em JS e mais 5,3 MB nativos do
+`SkData` — `fromBytes` **copia** (`SkData::MakeWithCopy`), enquanto
+`MakeImage` só compartilha (`SkImages::RasterFromData`). Fazendo tudo num
+tique, as duas gerações ficavam vivas: **~33 MB de pico**, mais a textura nova
+na GPU.
+
+Agora `recriar()` não troca o estado na hora:
+
+```
+pedido de recriação  → fase 1: só marca (world.gerando = true)
+                       o WorldMap SAI da árvore; no desmonte as SkImage são liberadas
+                       um quadro, para a UI thread remover a view de verdade
+                     → fase 2: gerarMundo + terreno, e o mapa volta
+```
+
+- **`dispose()` no desmonte** larga só a referência do wrapper; o `sk_sp` é
+  contado, então se a última cena desenhada ainda apontar para a imagem, ela
+  sobrevive até aquela cena sair. Por isso é seguro **no desmonte e só lá** —
+  depois disso ninguém mais lê a imagem.
+- **Esperar um quadro não é atraso arbitrário:** o efeito roda logo após o
+  commit do React, mas a remoção da view nativa acontece na UI thread.
+- **A câmera reinicia** ao recriar, porque o `WorldMap` remonta. É aceitável:
+  mundo novo começa na visão inicial. Trocar Mundo ↔ Aprender é outro caso — lá
+  o mapa nunca sai do layout.
+- **Sem recriação concorrente:** um segundo pedido é ignorado enquanto o
+  primeiro não terminou.
+- **O save não muda durante a fase 1**, então grava uma vez só, no fim.
 
 ## Por que o mapa voltava em branco
 
@@ -461,7 +544,7 @@ Curiosity ─registrarAprendizado─▶ LearningResult
 
 ### Comportamento temporário (natureza)
 
-As fixtures atuais têm influência de `vegetacao`, que ainda cai em
+As curiosidades de hoje têm influência de `vegetacao`, que ainda cai em
 `crescerVegetacao` (ver o aviso em `world/engine/growth.ts`): aprender a
 curiosidade de natureza faz nascer **uma árvore**, não uma construção. Isso é o
 sistema legado, mantido de propósito até a natureza ser redesenhada — o mundo
