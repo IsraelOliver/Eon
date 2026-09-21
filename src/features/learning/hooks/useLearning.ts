@@ -2,17 +2,27 @@ import { useState } from 'react';
 
 import { CURIOSIDADES_DE_TESTE } from '../data/fixtures';
 import { criarPerfilVazio, registrarAprendizado } from '../engine/profile';
-import type { Curiosity, CuriosityId, LearningResult } from '../engine/types';
+import type { Curiosity, CuriosityId, KnowledgeProfile, LearningResult } from '../engine/types';
+
+/** O que a interface precisa para mostrar e registrar aprendizado. */
+export interface Aprendizado {
+  curiosidades: readonly Curiosity[];
+  perfil: KnowledgeProfile;
+  jaAprendeu: (id: CuriosityId) => boolean;
+  aprender: (curiosidade: Curiosity) => LearningResult;
+}
 
 /**
- * Estado de aprendizagem da sessão: o perfil vive aqui, em memória, enquanto o
- * app estiver aberto (nada de persistência ainda).
+ * Estado de aprendizagem: o perfil vive aqui enquanto o app está aberto.
+ *
+ * `perfilInicial` vem do save quando existe um. O objeto recebido não é
+ * alterado: `registrarAprendizado` é puro e sempre devolve um perfil novo.
  *
  * Quem decide se uma curiosidade dá progresso continua sendo o engine
  * (`registrarAprendizado`): aqui só se guarda o perfil que ele devolve.
  */
-export function useLearning() {
-  const [perfil, setPerfil] = useState(criarPerfilVazio);
+export function useLearning(perfilInicial?: KnowledgeProfile | null): Aprendizado {
+  const [perfil, setPerfil] = useState<KnowledgeProfile>(() => perfilInicial ?? criarPerfilVazio());
   const aprendidas = new Set<CuriosityId>(perfil.aprendidas);
 
   return {

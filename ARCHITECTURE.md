@@ -16,8 +16,6 @@ src/
         rules.ts             → REGRAS do mundo, ESCALA_MUNDO, faixas e nomes
         generate.ts          → gera o mundo (semente + nível do mar como parâmetros)
         nature.ts            → decoração natural do mundo selvagem (árvores, pedras…)
-        themes.ts            → (protótipo) TEMAS: onde cada tema faz algo surgir e com que nota
-        placement.ts         → (protótipo) semear(): 3 plantas ao criar o mundo (o resto do arquivo não é mais usado)
         inspect.ts           → descreverTile(): bioma, altitude e umidade de um tile
         growth.ts            → gerarEventosDeCrescimento(): influências → eventos abstratos
         growthPlacement.ts   → colocarCrescimento(): evento → lugar válido + sprite
@@ -69,6 +67,9 @@ src/
         SettingsMenu.tsx     → janela "Configurações" (+ seção Desenvolvedor)
       hooks/
         useDevMode.ts        → modo desenvolvedor: 5 toques secretos liga/desliga
+  persistence/               → o save (camada de composição, como app/)
+    save.ts                  → SaveV1 + ehSaveV1(): formato e conferência
+    storage.ts               → AsyncStorage: ler, gravar em fila, apagar
   shared/                    → o que qualquer funcionalidade pode usar
     domain/themeKey.ts       → ThemeKey: temas em comum entre learning e world (tipo puro)
     domain/influence.ts      → InfluenceKey, KnowledgeInfluence: contrato learning → world
@@ -104,7 +105,10 @@ toque no botão → componente chama função recebida por props
    (`Resultado = { elementos, mensagem }`). Isso é o que o React precisa para
    perceber a mudança.
 6. `app/` só tem rotas. Lógica vai para `src/features/<funcionalidade>`.
-7. `shared/` não importa nada de `features/`.
+7. `shared/` não importa nada de `features/`. Quem precisa enxergar duas features
+   é camada de composição: hoje `app/` e `src/persistence/` (o save). As features
+   não importam `persistence/`: o tipo do que o mundo guarda (`WorldSnapshot`)
+   mora no próprio `world/engine/types.ts`.
 8. **Uma feature não importa outra.** `settings` não conhece `world`: a tela
    (`app/index.tsx`) chama os hooks das duas e liga uma na outra por props
    (ex.: `SettingsMenu` recebe as ferramentas do mundo em `ferramentasDev`).
@@ -142,9 +146,12 @@ toque no botão → componente chama função recebida por props
 | Mudar o que aparece numa janela         | `SettingsMenu.tsx`                    |
 | Mudar quantos toques ativam o modo dev  | `settings/hooks/useDevMode.ts`        |
 | Adicionar uma ferramenta de dev         | componente na feature + `ferramentasDev` em `app/index.tsx` |
-| Adicionar/remover um tema               | `shared/domain/themeKey.ts` (e `TEMAS` em `world/engine/themes.ts`) |
+| Adicionar/remover um tema               | `shared/domain/themeKey.ts` + `learning/engine/themes.ts` |
 | Adicionar um tipo de influência         | `shared/domain/influence.ts` + destino em `world/engine/growth.ts` |
 | Mudar o que aprender dá ao perfil       | `learning/engine/profile.ts`          |
+| Mudar o formato do save                 | `persistence/save.ts` (`SaveV1`, `VERSAO_DO_SAVE`) |
+| Mexer na gravação/chave do save         | `persistence/storage.ts` (`@eon/save`) |
+| Mexer na aleatoriedade do crescimento   | `world/engine/growthElements.ts` (`rngDeCrescimento`) |
 | Mexer na ponte aprender → mundo         | `app/index.tsx` (`aoAprender`)        |
 | Mudar como o mundo aplica crescimento   | `world/hooks/useWorld.ts` (`aplicarEventos`) |
 | Mudar os botões da barra de baixo       | `app/index.tsx` (`acoes`) + `shared/ui/icons.ts` |
@@ -266,16 +273,18 @@ AppScreen
   abrir e fechar o feed não refaz o terreno, não recria as `SkImage`, não
   recalcula os caminhos, não recarrega sprites e não reinicia a câmera.
 - **A barra de ações** (`shared/ui/ActionBar.tsx`) é uma cápsula flutuante
-  centralizada na borda de baixo, só com ícones: ◉ mundo, ▯ celular, ⚙︎
-  configurações. Ela **vale para o app inteiro**: é renderizada por último em
+  centralizada na borda de baixo, com dois ícones: ◉ mundo e ▯ celular. **Ela é a
+  única navegação entre as duas telas.** Vale para o app inteiro: é renderizada por último em
   `app/index.tsx`, acima do mundo, do aparelho e das janelas, e nunca some. Por
   isso o feed e a leitura reservam `ESPACO_ACTION_BAR` no rodapé.
   O celular fica no meio de propósito — é de lá que o feed cresce, e
   `centroDoItem()` devolve esse ponto para a animação (a barra é quem sabe o
   próprio layout). O item ativo (`ativo`) mostra onde o jogador está: mundo ou
   aparelho. Os ícones são provisórios (`shared/ui/icons.ts`).
-- **As janelas também ficam acima do aparelho**: `SettingsMenu` é renderizado
-  depois do `LearningOverlay`, para o ⚙︎ funcionar de qualquer tela.
+- **As configurações só abrem de dentro do aparelho**, pelo ⚙︎ no canto superior
+  direito do painel (`onConfiguracoes`). O mapa não tem botão para elas. O
+  `SettingsMenu` é renderizado depois do `LearningOverlay` para a janela ficar
+  por cima do painel.
 - **As janelas são controladas pela composição.** `SettingsMenu` e `LearnMenu`
   não carregam mais o próprio botão: recebem `aberto`/`onFechar`, e `app/index.tsx`
   guarda qual painel está aberto (um de cada vez).
@@ -293,9 +302,96 @@ AppScreen
   `importantForAccessibility="no-hide-descendants"`; fechado, o overlay recebe o
   mesmo tratamento. O que não está à vista não recebe dedo nem leitor de tela.
 - **Ao terminar de fechar, o mapa precisa reenviar a cena.** `LearningOverlay`
-  avisa por `onFechado` (no callback do `withTiming`, só quando o fechamento vai
-  até o fim), a composição incrementa `despertarMapa`, e o `WorldMap` chama
-  `repintar()`. Veja "Por que o mapa voltava em branco" para o porquê.
+  avisa por `onFechado`, a composição incrementa `despertarMapa`, e o `WorldMap`
+  chama `repintar()`. Veja "Por que o mapa voltava em branco" para o porquê.
+- **`onFechado` significa exatamente uma coisa:** houve uma transição real de
+  aberto para fechado e a animação dela chegou ao fim. Duas defesas garantem isso,
+  e as duas importam:
+  1. o efeito guarda a direção anterior num `ref` e **só anima em transição
+     real** — re-rodar por troca de identidade de prop não faz nada. Sem essa
+     saída, um `withTiming(0)` com o progresso já em 0 termina com
+     `finished === true` e passa por fechamento, o que realimentaria
+     render → efeito → repaint;
+  2. a callback compara o **destino daquela animação** (`destino === 0`), não o
+     `aberto` do render. Inverter no meio substitui a animação, e a substituída
+     chega com `finished === false`.
+- Por isso as ações que a composição passa ao aparelho (`onFechar`, `onFechado`,
+  `onConfiguracoes`) e a `origem` são **memoizadas com identidade fixa**: a
+  corretude não pode depender do React Compiler, que pode desistir em silêncio.
+
+## O que é salvo e o que é recalculado
+
+O jogo é gravado no aparelho com **AsyncStorage**, na chave `@eon/save`, no
+formato `SaveV1` (`src/persistence/save.ts`).
+
+```
+abrir o app
+  → carregarSave()             (AsyncStorage)
+  → ehSaveV1(): confere versão e forma
+  → <Jogo save={…}>            só agora nascem useWorld e useLearning
+  → gerarMundo(seed, nivelMar) reconstrói terreno e natureza
+  → app renderiza já com o estado certo
+```
+
+**A leitura vem antes de qualquer mundo.** `app/index.tsx` é uma casca que
+mostra só o fundo enquanto lê; sem isso o app criaria um mundo sorteado,
+desenharia o terreno e depois o jogaria fora — com piscada e trabalho perdido.
+Como o autosave vive dentro de `Jogo`, **ele não tem como rodar antes da
+hidratação**.
+
+**Autosave:** um `useMemo` monta o `SaveV1` a partir de
+`world.estadoPersistivel` e `aprendizado.perfil`, e um efeito grava quando essa
+referência muda. Ou seja, grava quando muda semente, nível do mar, crescimento,
+vilas, `growthSequence` ou perfil — e **não** grava por abrir o aparelho, animar,
+dar zoom, mostrar aviso ou alternar telas. Ao ir para segundo plano
+(`AppState`), o último save é gravado de novo pela **mesma função e a mesma
+fila** (uma ref guarda o mais recente, para não gravar estado velho).
+
+**Escritas em fila:** `salvarSave` encadeia promessas, então duas gravações
+seguidas terminam na ordem pedida e a mais nova nunca perde para a mais velha.
+Gravar não bloqueia a interface.
+
+**Quando algo dá errado:** sem save, JSON inválido, estrutura incompleta ou
+versão desconhecida → `console.warn` e o app começa um estado novo, sem quebrar.
+Erro de gravação → `console.warn` e o jogo segue com o que está na memória.
+Quando existir uma V2, é em `carregarSave` que entram as migrações.
+
+| Persistente (entra no save) | Derivado (volta sozinho) |
+| --- | --- |
+| `seed`, `nivelMar` | terreno, biomas, altitude, umidade, `distAgua`, `distMont` |
+| `crescimento: GrowthElement[]` | `mundo.natureza` (sai da seed) |
+| `settlements: Settlement[]` (caminhos inclusive) | buffers RGBA, `SkImage`, camada dos caminhos |
+| `growthSequence` | `RenderElement[]`, clareiras |
+| `perfil: KnowledgeProfile` | câmera, zoom, avisos, telas abertas, modo dev |
+
+O mundo inteiro volta de `gerarMundo(seed, nivelMar)`, que é determinístico —
+por isso nada do terreno precisa ser gravado. Caminhos não aparecem soltos no
+save: `Settlement.caminhos` já os guarda.
+
+### Crescimento restaurável (world.seed + growthSequence)
+
+O gerador de uma execução de crescimento **não vem mais do relógio**:
+
+```
+rngDeCrescimento(mundo.seed, growthSequence)  →  mulberry32(combinarSementes(…))
+```
+
+- `growthSequence` é **quantas execuções de crescimento aquele mundo já teve**.
+  Uma curiosidade com várias influências gera vários eventos numa execução só:
+  todos compartilham o mesmo gerador, e o contador sobe **uma vez** no fim.
+  Chamada sem eventos não conta.
+- O contador é lido e escrito **dentro** do `setEstado((s) => …)` de
+  `aplicarEventos`, então dois aprendizados seguidos pegam 0→1 e 1→2, sem se
+  atropelar.
+- Mundo novo (semente sorteada, semente manual ou nível do mar) zera para 0,
+  junto com `crescimento` e `settlements`.
+- O modo dev usa a mesma `aplicarEventos`, então também avança a sequência —
+  ele está mudando o mundo de verdade.
+- Depois de um futuro restart, restaurar `seed` + `growthSequence` faz a próxima
+  execução sair **idêntica** à que teria saído sem fechar o app. É o que o teste
+  do caso C prova.
+- O único sorteio que sobrou no mundo é `Math.random()` em `sementeAleatoria()`,
+  e só na **criação**: a semente sorteada é guardada e tudo mais sai dela.
 
 ## Por que o mapa voltava em branco
 
@@ -469,7 +565,7 @@ natureza → primeiro povoamento → núcleo → vila → (futuro: especializaç
   | fonte | 7,3 × 4 (22×12 px) | 0 | — (o respiro dela é a praça) |
   Duas construções colidem se os retângulos, expandidos pela soma das folgas (mais
   a folga extra do par), se tocam. Construção contra mina, observatório ou
-  protótipo, que não têm retângulo, continua usando a distância entre âncoras.
+  mina e observatório, que não têm retângulo, continua usando a distância entre âncoras.
   **Se uma arte mudar de tamanho, atualize `FOOTPRINT`.**
 - **Terreno sob a construção (`engine/buildable.ts`):** a âncora não basta — o
   sprite ocupa o retângulo inteiro. `footprintEmTerrenoValido` percorre **todos os
@@ -484,7 +580,7 @@ natureza → primeiro povoamento → núcleo → vila → (futuro: especializaç
   Margem da água (tiles): casa pequena 2, casa maior 4, fonte 3. Mina e
   observatório não têm retângulo: para eles vale a checagem da âncora. A mesma
   classificação (`tipoConstruivel`) é usada pelas regras de pontuação — não há
-  outra lista de "terreno proibido" no placement.
+  outra lista de "terreno proibido" na colocação.
 - **Praça (`RAIO_PRACA`, 8 tiles):** área livre em volta do **centro visual** da
   fonte (2 tiles acima da âncora). É **restrição dura**: nenhum retângulo de
   construção pode tocá-la, e a preferência pelo centro nunca vence essa regra.
@@ -540,7 +636,7 @@ natureza → primeiro povoamento → núcleo → vila → (futuro: especializaç
 
 **Clareira (temporária, só no desenho):** `combinarParaDesenho` esconde os
 `NaturalElement` a menos de `RAIO_CLAREIRA` (6 tiles) de uma construção (casa,
-casa maior, fonte, mina, observatório e as do protótipo) e os que caem sobre um
+casa maior, fonte, mina e observatório) e os que caem sobre um
 caminho (até `MARGEM_CAMINHO`, 1 tile). Plantas do jogador não abrem clareira.
 `mundo.natureza` não muda — continua a mesma lista da seed.
 
@@ -592,7 +688,7 @@ oceano livre, e a massa principal continua com 24% a 47% do mapa.
 ## Escala do mundo (ESCALA_MUNDO)
 
 O mundo tem `W` x `H` tiles (hoje 480x320). `ESCALA_MUNDO = W / 150` (hoje 3,2)
-compara isso com o mundo do protótipo original (150x100) e mantém tudo calibrado:
+compara isso com o mundo original (150x100) e mantém tudo calibrado:
 
 - **Frequências do ruído são divididas pela escala** (`REGRAS.frequencia`). Sem
   isso, um mundo maior só ganharia *mais* ilhas do mesmo tamanho; dividindo, as
@@ -615,7 +711,7 @@ sprite** o evento aparece. Devolve `'colocado'` com
 `{ evento, tipo, x, y, intensidade }` ou `'semLugar'` com o motivo. Não altera
 nada do que recebe.
 
-- **Estratégia** (mesma ideia do protótipo, sem reaproveitar o código dele):
+- **Estratégia**:
   sorteia 400 candidatos, rejeita lugares proibidos, dá nota, soma um acaso do
   `Rng` e fica com o melhor. Indexada por `WorldGrowthKind`, nunca por `ThemeKey`.
 - **Âncora:** `(x, y)` é a base do sprite, um tile só. Ainda não há footprint.
@@ -627,8 +723,8 @@ nada do que recebe.
   decide é o footprint (retângulos, ver "Assentamentos"). Para os demais pares
   vale a distância entre âncoras: `DISTANCIA_MINIMA_SPRITE` diz quanto espaço cada
   sprite pede (em unidades) e usa-se a média das duas exigências (ou
-  `DISTANCIA_ENTRE`, hoje vazio). Sprites sem entrada (`torre`, `escavacao`, do
-  protótipo) caem em `DISTANCIA_MINIMA_EVENTO`. Valores: árvores 1,4 (acácia 1,6),
+  `DISTANCIA_ENTRE`, hoje vazio). Sprites sem entrada caem em
+  `DISTANCIA_MINIMA_EVENTO`. Valores: árvores 1,4 (acácia 1,6),
   `casa` 2,2, `casa_maior` 2,6, `fonte` 2, `mina` 4, `observatorio` 5. Como o
   sprite da vegetação depende do bioma, ele é decidido **antes** da checagem.
 - **Agrupamento:** `AGRUPAMENTO` guarda peso e alcance, e `atracao(d, regra)` cai
@@ -652,13 +748,12 @@ nada do que recebe.
 - **Provisório:** `melhorarInfraestrutura` ainda não faz estrada, ponte nem melhora
   uma casa existente: cria uma `casa_maior` perto do núcleo da vila.
   `desenvolverObservacao` usa o `observatorio` do sistema antigo de sprites.
-  `escavacao` e `torre` existem só para o protótipo; o novo sistema não as usa.
 
 ## Elementos de crescimento (world/engine/growthElements.ts)
 
 - **`GrowthElement`** (`{ evento, tipo, x, y, intensidade }`) é o elemento do novo
   sistema. **Não tem `ThemeKey`**: o que ele é vem do evento, não do tema estudado.
-  O `Element` legado (com `tema`) continua sendo só do protótipo. Nenhum mapeamento
+  Nenhum mapeamento
   do tipo "povoamento = história" existe, justamente para não reacoplar o
   crescimento visual aos temas educacionais.
 - **`criarElementoDeCrescimento(colocacao)`**: colocação → elemento, sem alterar a
@@ -677,32 +772,46 @@ nada do que recebe.
   limiar de residências.
 - Um evento gera **no máximo um** elemento. `intensidade` é só metadado guardado.
 
-## Dois sistemas no mesmo mapa (temporário)
+## Um pipeline só de crescimento
 
-- **No estado (`useWorld`) são duas listas separadas**, sem conversão entre elas:
-  `elementos: Element[]` (protótipo, com `tema`) e `crescimento: GrowthElement[]`
-  (novo, sem tema). Mundo novo, semente nova ou nível do mar novo zeram a lista de
-  crescimento; `semear()` continua criando os elementos iniciais do protótipo.
-- **A união acontece só no render.** `combinarParaDesenho()` devolve
-  `RenderElement[]` (`tipo`, `x`, `y`, `desbotado?`, `brilha?`) ordenado por `y`,
-  para quem está mais abaixo ser desenhado por cima. A ordem guardada no engine não
-  muda, e `WorldSprites` só conhece esse contrato visual. Elementos de crescimento
-  ainda não desbotam nem brilham.
+O protótipo por tema (`themes.ts`, `placement.ts`, `Element`) **não existe mais**.
+Sobrou um caminho só:
+
+```
+World
+├── natureza procedural da seed   (mundo.natureza, engine/nature.ts)
+└── civilização                    (o que o conhecimento constrói)
+    └── GrowthElement
+        └── Settlement
+            └── caminhos
+```
+
+E a entrada dele:
+
+```
+Learning → influências → composição (app/index.tsx) → WorldGrowthEvent → GrowthElement
+```
+
+- **O estado do mundo tem uma lista só:** `crescimento: GrowthElement[]` (mais as
+  vilas). Mundo novo, semente nova ou nível do mar novo zeram a civilização — e o
+  mundo nasce **só com a natureza da seed**, sem nada construído.
+- **`combinarParaDesenho(natureza, crescimento, caminhos)`** devolve
+  `RenderElement[]` (`tipo`, `x`, `y`, `orientacao?`, `variante?`) ordenado por
+  `y`, para quem está mais abaixo ser desenhado por cima. As clareiras vêm só das
+  construções de `GrowthElement`, e `mundo.natureza` nunca muda: o filtro é
+  visual.
 - **Teste manual:** no modo desenvolvedor, a seção "Crescimento" tem um botão por
   crescimento da **civilização** (`CHAVES_DE_CIVILIZACAO`: Povoamento,
   Infraestrutura, Exploração, Observação). Natureza não tem botão: ela pertence à
   seed e se testa com Novo mundo / troca de semente. `crescerVegetacao` continua
-  no domínio. Cada toque chama `aplicarCrescimentoDev(tipo)`, que aplica um
-  evento de intensidade 1 e escreve no aviso se cresceu ou se não achou lugar.
-  Os nomes dos botões vêm de `NOMES_DE_CRESCIMENTO` (`engine/growth.ts`).
+  no domínio. Cada toque chama `aplicarCrescimentoDev(tipo)`, que passa pela mesma
+  `aplicarEventos` da produção. Os nomes vêm de `NOMES_DE_CRESCIMENTO`
+  (`engine/growth.ts`).
 - **Fronteira mantida:** `settings` continua recebendo `ferramentasDev` como
   `ReactNode`; os botões são do `world`, e `app/index.tsx` liga hook e componente.
-
-- **Coexistência temporária:** `themes.ts` e `placement.ts` são o protótipo antigo
-  (tema → sprite → lugar) e continuam ligados ao `useWorld`. O novo caminho
-  (`growth.ts` → `growthPlacement.ts` → `growthElements.ts`) fecha a parte pura do
-  engine, mas ainda **não** está ligado a nada: falta desenhar `GrowthElement` e
-  conectar ao hook, ao learning e à tela. Quando o novo loop estiver completo, o protótipo será substituído.
+- **`ThemeKey` não existe mais dentro de `world/`.** Tema é vocabulário de
+  `learning` (e de `shared/domain`, que os dois compartilham); o mundo só entende
+  influência → evento.
 
 ## Interface sobre o mapa
 
@@ -793,11 +902,12 @@ mecanismos:
   em ordem fixa por causa da regra dos hooks).
 - **Residências:** `imagemDoElemento` escolhe o PNG por papel + orientação +
   variante: `casa` usa as quatro casas diagonais pequenas, `casa_maior` as quatro
-  diagonais maiores. A casa frontal antiga (`casa.png`) só aparece para `Element`
-  do protótipo, que não tem orientação — as vilas nunca a usam. `casa_upgrade.png`
+  diagonais maiores. A casa frontal (`casa.png`) é o último recurso: só sairia
+  se uma residência chegasse ao render sem orientação/variante, o que o fluxo
+  atual não produz. `casa_upgrade.png`
   ficou no disco sem uso: a construção maior agora é só `casa_maior`.
-- `torre`, `observatorio` e `escavacao` ainda não têm PNG: continuam desenhados em
-  caracteres por `spriteBuffers.ts`, com cache por `tipo | desbotado | brilho`.
+- `observatorio` ainda não tem PNG: continua desenhado em
+  caracteres por `spriteBuffers.ts`, com cache por `tipo`.
   Para migrar um deles, basta acrescentar o arquivo, uma linha em `spriteAssets.ts`
   e uma em `useSpriteImages.ts`.
 - **Âncora do PNG:** centro do tile na horizontal e base no pé do tile —

@@ -88,7 +88,6 @@ export const SPAL: Record<string, string> = {
 };
 
 export const TINTA = '#2a1e18'; // contorno dos sprites
-export const NEVOA = '#cfd6d6'; // cor para onde os elementos esquecidos desbotam
 const TELHADOS = new Set(['#8a3a2b', '#b5523b']);
 
 export const hexRgb = (h: string): RGB => [
@@ -103,7 +102,6 @@ export const mix = (a: RGB, b: RGB, t: number): RGB => [
   a[2] + (b[2] - a[2]) * t,
 ];
 
-export const LUZ = hexRgb('#fff3b0'); // brilho da revisão
 
 // Modo pergaminho: tudo vira tons de tinta sobre papel
 const PAPEL = hexRgb('#f1e0b8');

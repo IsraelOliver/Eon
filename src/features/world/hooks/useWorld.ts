@@ -2,13 +2,11 @@ import { useMemo, useState } from 'react';
 
 import { gerarMundo } from '../engine/generate';
 import { CHAVES_DE_CIVILIZACAO, NOMES_DE_CRESCIMENTO } from '../engine/growth';
-import { aplicarEventosDeCrescimento } from '../engine/growthElements';
+import { aplicarEventosDeCrescimento, rngDeCrescimento } from '../engine/growthElements';
 import { descreverTile } from '../engine/inspect';
-import { mulberry32 } from '../engine/noise';
-import { semear } from '../engine/placement';
 import { FAIXA_NIVEL_MAR, FAIXA_SEMENTE, REGRAS } from '../engine/rules';
 import type {
-  Element, GrowthElement, GrowthResult, Rng, Settlement, World, WorldGrowthEvent, WorldGrowthKind,
+  GrowthElement, GrowthResult, Settlement, World, WorldGrowthEvent, WorldGrowthKind, WorldSnapshot,
 } from '../engine/types';
 import { ART, ART_H, ART_W, desenharTerreno } from '../render/buildPixels';
 import { montarLegenda } from '../render/legend';
@@ -18,16 +16,23 @@ import { combinarParaDesenho } from '../render/renderElements';
 /** idMensagem muda a cada ação, para o aviso reaparecer mesmo com texto repetido. */
 type Estado = {
   mundo: World;
-  /** Protótipo: elementos com tema, criados por aprender()/semear(). */
-  elementos: Element[];
-  /** Novo sistema: elementos sem tema, criados por eventos de crescimento. */
+  /** Tudo que o conhecimento construiu: casas, fonte, mina, observatório… */
   crescimento: GrowthElement[];
   /** Vilas: o núcleo lógico onde casas e infraestrutura nascem. */
   settlements: Settlement[];
+  /**
+   * Quantas execuções de crescimento este mundo já teve. Junto com a semente,
+   * define o gerador de cada execução — é o que torna o crescimento restaurável.
+   */
+  growthSequence: number;
   mensagem: string;
   idMensagem: number;
 };
 
+/**
+ * Único sorteio do mundo, e só na CRIAÇÃO: a semente sorteada é guardada e tudo
+ * o mais sai dela. O crescimento não usa acaso de relógio (veja `aplicarEventos`).
+ */
 function sementeAleatoria(): number {
   return 1 + Math.floor(Math.random() * 99999);
 }
@@ -49,17 +54,44 @@ function mensagemDeCrescimento(eventos: readonly WorldGrowthEvent[], r: GrowthRe
   );
 }
 
-function criarEstado(rng: Rng, idMensagem: number, seed: number, nivelMar: number): Estado {
-  const mundo = gerarMundo(seed, nivelMar);
-  // mundo novo começa sem civilização: nem elementos de crescimento, nem vilas
-  return { mundo, idMensagem, crescimento: [], settlements: [], ...semear(mundo, rng) };
+function criarEstado(idMensagem: number, seed: number, nivelMar: number): Estado {
+  // A natureza vem da seed; a civilização começa do zero e é o conhecimento que a constrói.
+  return {
+    mundo: gerarMundo(seed, nivelMar),
+    crescimento: [],
+    settlements: [],
+    growthSequence: 0,
+    mensagem: 'Mundo novo, ainda selvagem.',
+    idMensagem,
+  };
 }
 
-/** Liga o engine (regras) ao desenho e aos botões. */
-export function useWorld() {
-  const [rng] = useState(() => mulberry32(Date.now() | 0));
-  const [estado, setEstado] = useState(() => criarEstado(rng, 0, sementeAleatoria(), REGRAS.nivelMar));
-  const { mundo, elementos, crescimento, settlements, mensagem, idMensagem } = estado;
+/**
+ * Estado a partir de um save: o mundo **não** vem gravado, é reconstruído da
+ * semente (terreno, biomas e natureza saem iguais). Só a civilização e a
+ * sequência de crescimento vêm do disco.
+ */
+function restaurarEstado(salvo: WorldSnapshot): Estado {
+  return {
+    mundo: gerarMundo(salvo.seed, salvo.nivelMar),
+    crescimento: [...salvo.crescimento],
+    settlements: [...salvo.settlements],
+    growthSequence: salvo.growthSequence,
+    mensagem: '',
+    idMensagem: 0,
+  };
+}
+
+/**
+ * Liga o engine (regras) ao desenho e aos botões.
+ * `salvo` vem do save quando existe um; sem ele, o mundo nasce de uma semente
+ * sorteada. Lido uma vez só: depois disso quem manda é o estado do hook.
+ */
+export function useWorld(salvo?: WorldSnapshot | null) {
+  const [estado, setEstado] = useState<Estado>(() =>
+    salvo ? restaurarEstado(salvo) : criarEstado(0, sementeAleatoria(), REGRAS.nivelMar),
+  );
+  const { mundo, crescimento, settlements, growthSequence, mensagem, idMensagem } = estado;
 
   // buffer pesado: só é refeito quando o mundo muda
   const terreno = useMemo(() => desenharTerreno(mundo), [mundo]);
@@ -68,27 +100,41 @@ export function useWorld() {
   const camadaCaminhos = useMemo(() => desenharCaminhos(mundo, caminhos), [mundo, caminhos]);
   // lista leve de sprites: muda a cada elemento novo, sem tocar no terreno
   const paraDesenho = useMemo(
-    () => combinarParaDesenho(elementos, mundo.natureza, crescimento, caminhos),
-    [elementos, mundo.natureza, crescimento, caminhos],
+    () => combinarParaDesenho(mundo.natureza, crescimento, caminhos),
+    [mundo.natureza, crescimento, caminhos],
   );
   const legenda = useMemo(() => montarLegenda(), []);
+
+  /** O que entra no save. Só isto: o resto é recalculado a partir da semente. */
+  const estadoPersistivel = useMemo<WorldSnapshot>(
+    () => ({
+      seed: mundo.seed,
+      nivelMar: mundo.nivelMar,
+      crescimento,
+      settlements,
+      growthSequence,
+    }),
+    [mundo.seed, mundo.nivelMar, crescimento, settlements, growthSequence],
+  );
 
   /**
    * Aplica eventos de crescimento ao mundo. É por aqui que o conhecimento chega
    * ao mapa: a composição traduz influências em eventos e chama esta função.
    *
    * O estado é lido **dentro** do updater, para duas aprendizagens seguidas não
-   * se atropelarem. O `rng` tem estado próprio, e por isso o updater precisa
-   * rodar uma vez só — hoje roda (não há `StrictMode` no app).
+   * se atropelarem: cada uma enxerga a `growthSequence` deixada pela anterior.
+   * O gerador nasce da semente do mundo + essa sequência, nunca do relógio.
    */
   function aplicarEventos(eventos: readonly WorldGrowthEvent[]) {
     if (eventos.length === 0) return;
     setEstado((s) => {
+      const rng = rngDeCrescimento(s.mundo.seed, s.growthSequence);
       const r = aplicarEventosDeCrescimento(s.mundo, s.crescimento, s.settlements, eventos, rng);
       return {
         ...s,
         crescimento: r.elementos,
         settlements: r.settlements,
+        growthSequence: s.growthSequence + 1,
         mensagem: mensagemDeCrescimento(eventos, r),
         idMensagem: s.idMensagem + 1,
       };
@@ -96,10 +142,11 @@ export function useWorld() {
   }
 
   function recriar(seed: number, nivelMar: number) {
-    setEstado(criarEstado(rng, idMensagem + 1, seed, nivelMar));
+    setEstado(criarEstado(idMensagem + 1, seed, nivelMar));
   }
 
   return {
+    estadoPersistivel,
     terreno,
     caminhos: camadaCaminhos,
     elementosParaDesenho: paraDesenho,

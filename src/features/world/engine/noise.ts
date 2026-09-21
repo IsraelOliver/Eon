@@ -12,6 +12,18 @@ export function mulberry32(seed: number): Rng {
   };
 }
 
+/**
+ * Combina duas sementes numa terceira, de forma determinística.
+ * Serve para derivar a semente de uma execução a partir da semente do mundo,
+ * sem depender do relógio: mesma dupla, mesma saída, sempre.
+ */
+export function combinarSementes(a: number, b: number): number {
+  let h = Math.imul(a ^ 0x9e3779b9, 2654435761) ^ Math.imul(b + 0x85ebca6b, 1597334677);
+  h = Math.imul(h ^ (h >>> 15), 2246822519);
+  h ^= h >>> 13;
+  return h | 0;
+}
+
 /** Número "aleatório" fixo (0 a 1) para cada (x, y, semente). */
 export function hash2(x: number, y: number, s: number): number {
   let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(s, 1442695041);

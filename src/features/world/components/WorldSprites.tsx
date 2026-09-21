@@ -1,5 +1,5 @@
 import {
-  AlphaType, ColorType, FilterMode, Group, Image, MipmapMode, Skia, type SkImage,
+  AlphaType, ColorType, FilterMode, Image, MipmapMode, Skia, type SkImage,
 } from '@shopify/react-native-skia';
 import { useRef } from 'react';
 
@@ -12,19 +12,16 @@ import { construirSprite } from '../render/spriteBuffers';
 // "Nearest" = pixels quadrados em qualquer zoom
 const NITIDO = { filter: FilterMode.Nearest, mipmap: MipmapMode.None };
 
-const OPACIDADE_DESBOTADO = 0.5;
-
 type Buffer = { imagem: SkImage; largura: number; altura: number; deslocX: number; deslocY: number };
 
-/** Fallback dos sprites sem PNG (torre, observatorio, escavacao): desenho em caracteres. */
+/** Fallback dos sprites sem PNG (pedra, arbusto): desenho em caracteres. */
 function obterBuffer(cache: Map<string, Buffer>, el: RenderElement): Buffer | null {
-  const desbotado = el.desbotado === true;
-  const chave = `${el.tipo}|${desbotado ? 1 : 0}`;
+  const chave = el.tipo;
 
   const guardada = cache.get(chave);
   if (guardada) return guardada;
 
-  const sprite = construirSprite(el.tipo, { desbotado });
+  const sprite = construirSprite(el.tipo);
   const imagem = Skia.Image.MakeImage(
     { width: sprite.largura, height: sprite.altura, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul },
     Skia.Data.fromBytes(sprite.pixels),
@@ -70,9 +67,7 @@ export function WorldSprites({ elementos }: Props) {
           const x = el.x * ART + ART / 2 - largura / 2;
           const y = el.y * ART + ART - altura;
           return (
-            <Group key={chave} opacity={el.desbotado ? OPACIDADE_DESBOTADO : 1}>
-              <Image image={png} x={x} y={y} width={largura} height={altura} fit="fill" sampling={NITIDO} />
-            </Group>
+            <Image key={chave} image={png} x={x} y={y} width={largura} height={altura} fit="fill" sampling={NITIDO} />
           );
         }
 

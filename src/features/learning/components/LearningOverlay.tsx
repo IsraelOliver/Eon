@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing, Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withTiming,
@@ -9,6 +9,7 @@ import { useColors } from '@/shared/theme/colors';
 import { ICONS } from '@/shared/ui/icons';
 
 import type { LearningResult } from '../engine/types';
+import type { Aprendizado } from '../hooks/useLearning';
 import { LearningScreen } from './LearningScreen';
 
 const ABRIR_MS = 320;
@@ -20,6 +21,8 @@ const RAIO_FECHADO = 64;
 
 type Props = {
   aberto: boolean;
+  /** Estado de aprendizagem da composição (o save precisa enxergá-lo). */
+  aprendizado: Aprendizado;
   /** Ponto e tamanho do botão de onde o painel cresce (coordenadas da tela). */
   origem: { x: number; y: number; tamanho: number };
   onFechar: () => void;
@@ -30,6 +33,8 @@ type Props = {
   onFechado?: () => void;
   /** Conhecimento novo registrado: a composição faz o mundo crescer. */
   onAprendido?: (resultado: LearningResult) => void;
+  /** As configurações só abrem daqui — o mundo não tem botão para elas. */
+  onConfiguracoes?: () => void;
 };
 
 /**
@@ -42,22 +47,40 @@ type Props = {
  * A animação é só `transform` + `opacity`, num shared value só: nada de layout
  * durante o movimento.
  */
-export function LearningOverlay({ aberto, origem, onFechar, onFechado, onAprendido }: Props) {
+export function LearningOverlay({
+  aberto, aprendizado, origem, onFechar, onFechado, onAprendido, onConfiguracoes,
+}: Props) {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const tela = useWindowDimensions();
   const [lendo, setLendo] = useState(false);
-  const progresso = useSharedValue(0);
+  const progresso = useSharedValue(aberto ? 1 : 0);
+  /** Direção mostrada por último. Só transição real move a animação. */
+  const estavaAberto = useRef(aberto);
 
   useEffect(() => {
+    const eraAberto = estavaAberto.current;
+    estavaAberto.current = aberto;
+
+    /*
+     * Sem mudança de direção, nada a fazer. Esta saída é o que impede um ciclo:
+     * se o efeito re-rodar só porque uma prop trocou de identidade, ele não
+     * anima — e sem animação não há callback, não há `onFechado`, não há novo
+     * render. (Antes, um `withTiming(0)` com o progresso já em 0 terminava com
+     * `finished === true` e passava por "fechamento concluído".)
+     */
+    if (eraAberto === aberto) return;
+
+    const destino = aberto ? 1 : 0;
     progresso.set(
       withTiming(
-        aberto ? 1 : 0,
+        destino,
         { duration: aberto ? ABRIR_MS : FECHAR_MS, easing: Easing.out(Easing.cubic) },
         (terminou) => {
           'worklet';
-          // Só quando o fechamento vai até o fim (reabrir no meio cancela).
-          if (terminou && !aberto && onFechado) runOnJS(onFechado)();
+          // `destino` é desta animação, não do render atual. Uma animação
+          // substituída (o jogador inverteu no meio) chega com terminou=false.
+          if (terminou && destino === 0 && onFechado) runOnJS(onFechado)();
         },
       ),
     );
@@ -98,16 +121,21 @@ export function LearningOverlay({ aberto, origem, onFechar, onFechado, onAprendi
       >
         <Animated.View style={[StyleSheet.absoluteFill, conteudo]}>
           {/* "Ver no mundo" é o mesmo fechar de sempre: com animação. */}
-          <LearningScreen onLeitura={setLendo} onAprendido={onAprendido} onVerMundo={onFechar} />
-          {/* A leitura tem o próprio "voltar": dois botões de sair confundiriam. */}
-          {!lendo && (
+          <LearningScreen
+            aprendizado={aprendizado}
+            onLeitura={setLendo}
+            onAprendido={onAprendido}
+            onVerMundo={onFechar}
+          />
+          {/* Sair daqui é pela barra flutuante. Este canto é das configurações. */}
+          {!lendo && onConfiguracoes && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Fechar e voltar ao mundo"
-              onPress={onFechar}
+              accessibilityLabel="Abrir configurações"
+              onPress={onConfiguracoes}
               hitSlop={10}
               style={({ pressed }) => [
-                styles.fechar,
+                styles.canto,
                 {
                   top: insets.top + 10,
                   right: 16,
@@ -117,7 +145,7 @@ export function LearningOverlay({ aberto, origem, onFechar, onFechado, onAprendi
                 },
               ]}
             >
-              <Text style={[styles.fecharTexto, { color: c.ink }]}>{ICONS.fechar}</Text>
+              <Text style={[styles.cantoTexto, { color: c.ink }]}>{ICONS.gear}</Text>
             </Pressable>
           )}
         </Animated.View>
@@ -128,7 +156,7 @@ export function LearningOverlay({ aberto, origem, onFechar, onFechado, onAprendi
 
 const styles = StyleSheet.create({
   painel: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' },
-  fechar: {
+  canto: {
     position: 'absolute',
     width: 34,
     height: 34,
@@ -137,5 +165,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fecharTexto: { fontSize: 15, lineHeight: 18 },
+  cantoTexto: { fontSize: 16, lineHeight: 19 },
 });

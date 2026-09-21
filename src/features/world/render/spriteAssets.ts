@@ -6,8 +6,8 @@ import type { RenderElement } from './renderElements';
  *
  * O engine pensa em papéis (`casa`, `casa_maior`, `fonte`) + orientação + variante;
  * `imagemDoElemento` traduz isso na chave de imagem abaixo.
- * Sprites sem PNG (torre, observatorio, escavacao, pedra, arbusto) usam o desenho
- * antigo em caracteres (spriteBuffers.ts).
+ * Sprites sem PNG (observatorio, pedra, arbusto) usam o desenho em caracteres
+ * (spriteBuffers.ts).
  */
 export const IMAGENS = {
   arvore: require('../../../../assets/images/world/sprites/arvore.png'),
@@ -17,7 +17,7 @@ export const IMAGENS = {
   mina: require('../../../../assets/images/world/sprites/mina.png'),
   fonte: require('../../../../assets/images/world/sprites/fonte.png'),
 
-  // Casa frontal antiga: só para o protótipo (Element), que não tem orientação.
+  // Casa frontal: fallback para uma residência que chegue sem orientação/variante.
   // As vilas usam sempre as diagonais abaixo.
   casa: require('../../../../assets/images/world/sprites/casa.png'),
 

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, AppState, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LearningOverlay } from '@/features/learning/components/LearningOverlay';
@@ -11,22 +11,58 @@ import { BiomeLegend } from '@/features/world/components/BiomeLegend';
 import { WorldDevTools } from '@/features/world/components/WorldDevTools';
 import { WorldMap } from '@/features/world/components/WorldMap';
 import { gerarEventosDeCrescimento } from '@/features/world/engine/growth';
+import { useLearning } from '@/features/learning/hooks/useLearning';
 import { useWorld } from '@/features/world/hooks/useWorld';
+import { VERSAO_DO_SAVE, type SaveV1 } from '@/persistence/save';
+import { carregarSave, salvarSave } from '@/persistence/storage';
+import { useColors } from '@/shared/theme/colors';
 import { ActionBar, centroDoItem, type AcaoDaBarra } from '@/shared/ui/ActionBar';
 import { ICONS } from '@/shared/ui/icons';
 
-/** O celular fica no meio da barra: é de lá que o feed cresce. */
+/** Posição do celular na barra: é de lá que o feed cresce. */
 const INDICE_CELULAR = 1;
-const TOTAL_DE_ACOES = 3;
+const TOTAL_DE_ACOES = 2;
+
+/**
+ * Casca de hidratação: lê o save ANTES de existir qualquer mundo.
+ *
+ * Sem isto, o app criaria um mundo sorteado, desenharia o terreno e só então
+ * descobriria que havia um save — com um piscar de mundo errado e um buffer
+ * pesado jogado fora. Enquanto a leitura acontece, só o fundo aparece.
+ */
+export default function AppScreen() {
+  const c = useColors();
+  const [save, setSave] = useState<SaveV1 | null | undefined>(undefined);
+
+  useEffect(() => {
+    let vivo = true;
+    void carregarSave().then((lido) => {
+      if (vivo) setSave(lido);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  if (save === undefined) {
+    return (
+      <View style={[styles.tela, styles.carregando, { backgroundColor: c.bg }]}>
+        <ActivityIndicator color={c.ink} />
+      </View>
+    );
+  }
+
+  return <Jogo save={save} />;
+}
 
 /**
  * Composição do app: o mundo é a tela-base, sempre montada e sempre no layout.
  * O feed abre por cima dele como um aparelho — nunca no lugar dele.
  *
- * Por isso `useWorld()` vive aqui: abrir e fechar o feed não desmonta nada, não
- * refaz o terreno e não mexe na câmera.
+ * Só é montado depois que o save foi resolvido, então `useWorld` e `useLearning`
+ * já nascem com o estado certo — e o autosave nunca roda antes da hidratação.
  */
-export default function AppScreen() {
+function Jogo({ save }: { save: SaveV1 | null }) {
   const [configAberto, setConfigAberto] = useState(false);
   const [aprenderAberto, setAprenderAberto] = useState(false);
   /** Sobe quando o feed acaba de sair da frente: o mapa reenvia a cena ao Skia. */
@@ -34,8 +70,27 @@ export default function AppScreen() {
 
   const tela = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const world = useWorld();
+  const world = useWorld(save?.world);
+  const aprendizado = useLearning(save?.learning.perfil);
   const dev = useDevMode();
+
+  /*
+   * Estas têm identidade fixa de propósito. O efeito da animação do
+   * aparelho depende de `onFechado`: se ela mudasse a cada render, o efeito
+   * re-rodaria sem motivo. O `LearningOverlay` já se protege disso sozinho,
+   * mas o contrato certo é o de cá — não depender de otimização do compilador.
+   */
+  const abrirAprender = useCallback(() => setAprenderAberto(true), []);
+  const fecharAprender = useCallback(() => setAprenderAberto(false), []);
+  const aoFecharAprender = useCallback(() => setDespertarMapa((n) => n + 1), []);
+  const abrirConfiguracoes = useCallback(() => setConfigAberto(true), []);
+  const fecharConfiguracoes = useCallback(() => setConfigAberto(false), []);
+
+  /** Objeto estável: ele alimenta os estilos animados do aparelho. */
+  const origemDoAparelho = useMemo(
+    () => centroDoItem(INDICE_CELULAR, TOTAL_DE_ACOES, tela, insets.bottom),
+    [tela.width, tela.height, insets.bottom],
+  );
 
   /**
    * A ponte aprender → mundo. É o único lugar que vê as duas features, e ele não
@@ -50,10 +105,43 @@ export default function AppScreen() {
   };
 
   const acoes: readonly AcaoDaBarra[] = [
-    { chave: 'mundo', icone: ICONS.mundo, rotulo: 'Ver o mundo', onPress: () => setAprenderAberto(false) },
-    { chave: 'celular', icone: ICONS.celular, rotulo: 'Abrir Aprender', onPress: () => setAprenderAberto(true) },
-    { chave: 'config', icone: ICONS.gear, rotulo: 'Abrir configurações', onPress: () => setConfigAberto(true) },
+    { chave: 'mundo', icone: ICONS.mundo, rotulo: 'Ver o mundo', onPress: fecharAprender },
+    { chave: 'celular', icone: ICONS.celular, rotulo: 'Abrir Aprender', onPress: abrirAprender },
   ];
+
+  /**
+   * O save montado a partir do estado persistente das duas features. Só muda
+   * quando algo que vale a pena guardar muda — abrir o aparelho, animar, dar
+   * zoom ou mostrar um aviso não mexem nestas referências.
+   */
+  const saveAtual = useMemo<SaveV1>(
+    () => ({
+      version: VERSAO_DO_SAVE,
+      world: world.estadoPersistivel,
+      learning: { perfil: aprendizado.perfil },
+    }),
+    [world.estadoPersistivel, aprendizado.perfil],
+  );
+
+  // Autosave. Grava em fila, sem bloquear a interface.
+  useEffect(() => {
+    void salvarSave(saveAtual);
+  }, [saveAtual]);
+
+  /*
+   * Rede de segurança ao sair do app. A ref é atualizada a cada save novo, para
+   * o listener não gravar o primeiro estado da sessão. É a mesma função (e a
+   * mesma fila) do autosave: não existe um segundo caminho de gravação.
+   */
+  const ultimoSave = useRef(saveAtual);
+  ultimoSave.current = saveAtual;
+
+  useEffect(() => {
+    const assinatura = AppState.addEventListener('change', (estado) => {
+      if (estado === 'inactive' || estado === 'background') void salvarSave(ultimoSave.current);
+    });
+    return () => assinatura.remove();
+  }, []);
 
   return (
     <View style={styles.tela}>
@@ -81,14 +169,16 @@ export default function AppScreen() {
 
       <LearningOverlay
         aberto={aprenderAberto}
-        origem={centroDoItem(INDICE_CELULAR, TOTAL_DE_ACOES, tela, insets.bottom)}
-        onFechar={() => setAprenderAberto(false)}
-        onFechado={() => setDespertarMapa((n) => n + 1)}
+        aprendizado={aprendizado}
+        origem={origemDoAparelho}
+        onFechar={fecharAprender}
+        onFechado={aoFecharAprender}
         onAprendido={aoAprender}
+        onConfiguracoes={abrirConfiguracoes}
       />
       <SettingsMenu
         aberto={configAberto}
-        onFechar={() => setConfigAberto(false)}
+        onFechar={fecharConfiguracoes}
         onNovoMundo={world.novoMundo}
         devAtivo={dev.ativo}
         onToqueSecreto={dev.registrarToque}
@@ -116,4 +206,5 @@ export default function AppScreen() {
 const styles = StyleSheet.create({
   tela: { flex: 1 },
   mundo: { flex: 1 },
+  carregando: { alignItems: 'center', justifyContent: 'center' },
 });

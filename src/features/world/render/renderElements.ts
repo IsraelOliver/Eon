@@ -1,16 +1,13 @@
-import type { Element, GrowthElement, NaturalElement, Orientacao, PathTile, SpriteKey, Variante } from '../engine/types';
+import type { GrowthElement, NaturalElement, Orientacao, PathTile, SpriteKey, Variante } from '../engine/types';
 
 /**
  * O que o desenho precisa saber de um elemento — só propriedades visuais.
- * Serve para os três mundos: protótipo (Element), natureza (NaturalElement)
- * e civilização (GrowthElement).
+ * Serve para a natureza (NaturalElement) e para a civilização (GrowthElement).
  */
 export interface RenderElement {
   tipo: SpriteKey;
   x: number;
   y: number;
-  desbotado?: boolean;
-  brilha?: boolean;
   /** Residências das vilas: escolhem qual PNG diagonal desenhar. */
   orientacao?: Orientacao;
   variante?: Variante;
@@ -30,8 +27,6 @@ const CONSTRUCOES: ReadonlySet<SpriteKey> = new Set([
   'fonte',
   'mina',
   'observatorio',
-  'torre',
-  'escavacao',
 ]);
 
 /**
@@ -77,12 +72,11 @@ function limparCaminhos(
 }
 
 export function combinarParaDesenho(
-  legados: readonly Element[],
   natureza: readonly NaturalElement[],
   crescimento: readonly GrowthElement[],
   caminhos: readonly PathTile[] = [],
 ): RenderElement[] {
-  const construcoes = [...legados, ...crescimento].filter((e) => CONSTRUCOES.has(e.tipo));
+  const construcoes = crescimento.filter((e) => CONSTRUCOES.has(e.tipo));
   const naturezaVisivel = limparCaminhos(abrirClareiras(natureza, construcoes), caminhos);
-  return [...legados, ...naturezaVisivel, ...crescimento].sort((a, b) => a.y - b.y);
+  return [...naturezaVisivel, ...crescimento].sort((a, b) => a.y - b.y);
 }

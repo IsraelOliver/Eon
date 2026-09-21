@@ -6,6 +6,7 @@
 import { escolherOrientacaoCasa, escolherVariante } from './appearance';
 import { pontoDeEntrada } from './footprint';
 import { colocarCrescimento, colocarFonte } from './growthPlacement';
+import { combinarSementes, mulberry32 } from './noise';
 import { conectarARede, criarPraca, mesclarCaminhos } from './paths';
 import {
   VILA,
@@ -83,6 +84,17 @@ function substituir(settlements: readonly Settlement[], vila: Settlement): Settl
  * Quando a vila chega a VILA.residenciasParaFonte moradias, ela ganha a fonte.
  * A lista recebida não é alterada.
  */
+/**
+ * O gerador de UMA execução de crescimento — o único jeito de criá-lo.
+ *
+ * Não depende do relógio: sai da semente do mundo mais quantas execuções aquele
+ * mundo já teve (`growthSequence`). Por isso, depois de restaurar um save, a
+ * próxima execução continua exatamente a sequência que teria continuado.
+ */
+export function rngDeCrescimento(seedDoMundo: number, sequencia: number): Rng {
+  return mulberry32(combinarSementes(seedDoMundo, sequencia));
+}
+
 export function aplicarEventosDeCrescimento(
   mundo: World,
   elementosAtuais: readonly GrowthElement[],

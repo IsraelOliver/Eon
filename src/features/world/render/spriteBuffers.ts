@@ -4,7 +4,7 @@
 // Puro: sem React, sem Skia.
 // =====================================================================
 import type { SpriteKey } from '../engine/types';
-import { LUZ, NEVOA, SPAL, TINTA, criarPaleta, mix, type RGB } from './palette';
+import { SPAL, TINTA, criarPaleta, type RGB } from './palette';
 import { SPRITES } from './sprites';
 
 /** Um sprite pronto para virar imagem. deslocX/Y: onde encostar no tile (em pixels de arte). */
@@ -17,14 +17,11 @@ export interface SpriteBuffer {
 }
 
 export interface EstadoDoSprite {
-  desbotado?: boolean;
-  /** 0 a 1; só tem efeito em elementos marcados para brilhar. */
-  brilho?: number;
   pergaminho?: boolean;
 }
 
 export function construirSprite(tipo: SpriteKey, estado: EstadoDoSprite = {}): SpriteBuffer {
-  const { desbotado = false, brilho = 0, pergaminho = false } = estado;
+  const { pergaminho = false } = estado;
   const rows = SPRITES[tipo];
   const h = rows.length;
   const w = rows[0].length;
@@ -36,7 +33,6 @@ export function construirSprite(tipo: SpriteKey, estado: EstadoDoSprite = {}): S
 
   const P = criarPaleta(pergaminho);
   const tinta = P(TINTA);
-  const nevoa = P(NEVOA);
   const cheio = (r: number, c: number) => r >= 0 && c >= 0 && r < h && c < w && rows[r][c] !== '.';
   const put = (c: number, r: number, cor: RGB) => {
     const k = ((r + 1) * largura + (c + 1)) * 4;
@@ -47,7 +43,7 @@ export function construirSprite(tipo: SpriteKey, estado: EstadoDoSprite = {}): S
   };
 
   // contorno de 1 pixel em volta do desenho
-  const contorno = desbotado ? mix(tinta, nevoa, 0.6) : tinta;
+  const contorno = tinta;
   for (let r = -1; r <= h; r++) {
     for (let c = -1; c <= w; c++) {
       if (cheio(r, c)) continue;
@@ -59,10 +55,7 @@ export function construirSprite(tipo: SpriteKey, estado: EstadoDoSprite = {}): S
     for (let c = 0; c < w; c++) {
       const ch = rows[r][c];
       if (ch === '.') continue;
-      let cor = P(SPAL[ch]);
-      if (desbotado) cor = mix(cor, nevoa, 0.7);
-      if (brilho > 0) cor = mix(cor, LUZ, brilho * 0.8);
-      put(c, r, cor);
+      put(c, r, P(SPAL[ch]));
     }
   }
 

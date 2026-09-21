@@ -5,12 +5,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/shared/theme/colors';
 import { ESPACO_ACTION_BAR } from '@/shared/ui/ActionBar';
 
-import { useLearning } from '../hooks/useLearning';
+import type { Aprendizado } from '../hooks/useLearning';
 import type { Curiosity, CuriosityId, LearningResult } from '../engine/types';
 import { CuriosityCard } from './CuriosityCard';
 import { CuriosityReader } from './CuriosityReader';
 
 type Props = {
+  /** Estado de aprendizagem, criado pela composição (o save precisa dele). */
+  aprendizado: Aprendizado;
   /** Avisa quem contém a tela quando a leitura abre ou fecha (o ✕ some durante a leitura). */
   onLeitura?: (lendo: boolean) => void;
   /**
@@ -24,10 +26,9 @@ type Props = {
 };
 
 /** Aba Aprender: o feed e, por cima dele, a leitura em tela cheia. */
-export function LearningScreen({ onLeitura, onAprendido, onVerMundo }: Props) {
+export function LearningScreen({ aprendizado, onLeitura, onAprendido, onVerMundo }: Props) {
   const c = useColors();
   const insets = useSafeAreaInsets();
-  const aprendizado = useLearning();
   const [abertaId, setAbertaId] = useState<CuriosityId | null>(null);
 
   const aberta = aprendizado.curiosidades.find((cu) => cu.id === abertaId) ?? null;

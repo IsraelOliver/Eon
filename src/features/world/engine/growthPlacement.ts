@@ -72,7 +72,7 @@ const DISTANCIA_MINIMA_SPRITE: Partial<Record<SpriteKey, number>> = {
  */
 const DISTANCIA_ENTRE: Partial<Record<`${SpriteKey}|${SpriteKey}`, number>> = {};
 
-/** Fallback para sprites sem entrada acima (torre, escavacao: só o protótipo usa). */
+/** Fallback para sprites sem entrada na tabela acima. */
 const DISTANCIA_MINIMA_EVENTO: Record<WorldGrowthKind, number> = {
   crescerVegetacao: 1.6,
   desenvolverPovoamento: 2.2,

@@ -16,5 +16,4 @@ export const ICONS = {
   mundo: '◉',
   /** Provisório: o aparelho que abre o feed. Vira pixel art depois. */
   celular: '▯',
-  fechar: '✕',
 } satisfies Record<string, Icon>;

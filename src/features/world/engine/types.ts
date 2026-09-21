@@ -2,21 +2,15 @@ export type Biome = 'deserto' | 'savana' | 'planicie' | 'floresta' | 'tundra';
 
 export type TileType = Biome | 'oceano' | 'raso' | 'lago' | 'praia' | 'montanha' | 'neve';
 
-import type { ThemeKey } from '../../../shared/domain/themeKey';
-
-export type { ThemeKey };
-
 export type SpriteKey =
-  /** Residência. No protótipo (Element) é a casa frontal antiga; nas vilas, a diagonal. */
+  /** Residência da vila (PNG diagonal, com orientação e variante). */
   | 'casa'
   /** Residência maior, de mais importância (resultado de melhorarInfraestrutura). */
   | 'casa_maior'
   /** Marco central da vila (no máximo uma por Settlement). */
   | 'fonte'
-  | 'torre'
   | 'observatorio'
   | 'mina'
-  | 'escavacao'
   | 'arvore'
   | 'pinheiro'
   | 'cacto'
@@ -55,47 +49,6 @@ export interface World {
   centro: { x: number; y: number; raio: number };
   /** Árvores, pedras e arbustos do mundo selvagem. Mesma seed, mesma natureza. */
   natureza: NaturalElement[];
-}
-
-/** Um lugar candidato, com tudo que as regras dos temas precisam para dar nota. */
-export interface Tile {
-  x: number;
-  y: number;
-  tipo: TileType;
-  e: number;
-  distMont: number;
-  distAgua: number;
-  maisPerto: number;
-  pertoHist: number;
-  pertoGeo: number;
-  pertoNat: number;
-}
-
-/** Algo que surgiu no mapa por causa de uma curiosidade aprendida. */
-export interface Element {
-  tema: ThemeKey;
-  tipo: SpriteKey;
-  x: number;
-  y: number;
-  protegido: boolean;
-  desbotado: boolean;
-  brilha: boolean;
-}
-
-export interface Theme {
-  nome: string;
-  /** Distância mínima até outros elementos. */
-  min: number;
-  /** null = lugar proibido; número = nota (maior é melhor). */
-  pontuar(c: Tile): number | null;
-  sprite(c: Tile, quantosDoTema: number): SpriteKey;
-  motivo(c: Tile): string;
-}
-
-/** Toda ação devolve a nova lista de elementos e o texto para o log. */
-export interface Resultado {
-  elementos: Element[];
-  mensagem: string;
 }
 
 /** O que o mundo pode tentar desenvolver (sem dizer onde nem com qual sprite). */
@@ -137,8 +90,7 @@ export type WorldGrowthPlacementResult =
 
 /**
  * Elemento criado pelo novo sistema de crescimento.
- * Não tem ThemeKey: o que ele é vem do evento, não do tema educacional.
- * (O `Element` legado, com tema, continua sendo do protótipo.)
+ * O que ele é vem do evento de crescimento, não de tema educacional.
  */
 /** Para que lado a casa está virada (qual parede tem a porta). */
 export type Orientacao = 'frente' | 'tras';
@@ -189,6 +141,19 @@ export interface PathTile {
   x: number;
   y: number;
   tipo: PathKind;
+}
+
+/**
+ * O que precisa ser guardado de um mundo para ele voltar igual.
+ * Tudo o mais (terreno, biomas, natureza, distâncias) sai de seed + nivelMar.
+ */
+export interface WorldSnapshot {
+  seed: number;
+  nivelMar: number;
+  crescimento: GrowthElement[];
+  settlements: Settlement[];
+  /** Quantas execuções de crescimento este mundo já teve. */
+  growthSequence: number;
 }
 
 /** Resultado de aplicar uma sequência de eventos de crescimento. */
