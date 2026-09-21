@@ -175,6 +175,20 @@ export interface Settlement {
   quantidadeElementos: number;
   /** Posição da fonte, quando a vila já tem uma (no máximo uma por vila). */
   fonte?: { x: number; y: number };
+  /** Rede de caminhos da vila (praça inclusive). Vazia até a fonte nascer. */
+  caminhos: PathTile[];
+  /** Quantas rotas viraram eixo principal (as primeiras depois da praça). */
+  viasPrincipais: number;
+}
+
+/** Função de cada trecho da rede: eixo da vila, ligação de grupo ou entrada de casa. */
+export type PathKind = 'principal' | 'secundario' | 'acesso';
+
+/** Um tile de caminho. Pertence à vila que o guarda, por isso não repete o id. */
+export interface PathTile {
+  x: number;
+  y: number;
+  tipo: PathKind;
 }
 
 /** Resultado de aplicar uma sequência de eventos de crescimento. */

@@ -1,4 +1,4 @@
-import type { Element, GrowthElement, NaturalElement, Orientacao, SpriteKey, Variante } from '../engine/types';
+import type { Element, GrowthElement, NaturalElement, Orientacao, PathTile, SpriteKey, Variante } from '../engine/types';
 
 /**
  * O que o desenho precisa saber de um elemento — só propriedades visuais.
@@ -58,12 +58,31 @@ function abrirClareiras(
  * abaixo apareça por cima. Não altera as listas recebidas nem a ordem guardada
  * nos engines. Natureza e civilização continuam separadas no domínio.
  */
+/** Distância (tiles) de um caminho em que a natureza some, para a rua ficar limpa. */
+export const MARGEM_CAMINHO = 1;
+
+/** Tira do desenho a natureza que caiu sobre a rua (o domínio não muda). */
+function limparCaminhos(
+  natureza: readonly NaturalElement[],
+  caminhos: readonly PathTile[],
+): readonly NaturalElement[] {
+  if (!caminhos.length) return natureza;
+  const ocupados = new Set<string>();
+  for (const c of caminhos) {
+    for (let dy = -MARGEM_CAMINHO; dy <= MARGEM_CAMINHO; dy++) {
+      for (let dx = -MARGEM_CAMINHO; dx <= MARGEM_CAMINHO; dx++) ocupados.add(`${c.x + dx},${c.y + dy}`);
+    }
+  }
+  return natureza.filter((n) => !ocupados.has(`${n.x},${n.y}`));
+}
+
 export function combinarParaDesenho(
   legados: readonly Element[],
   natureza: readonly NaturalElement[],
   crescimento: readonly GrowthElement[],
+  caminhos: readonly PathTile[] = [],
 ): RenderElement[] {
   const construcoes = [...legados, ...crescimento].filter((e) => CONSTRUCOES.has(e.tipo));
-  const naturezaVisivel = abrirClareiras(natureza, construcoes);
+  const naturezaVisivel = limparCaminhos(abrirClareiras(natureza, construcoes), caminhos);
   return [...legados, ...naturezaVisivel, ...crescimento].sort((a, b) => a.y - b.y);
 }

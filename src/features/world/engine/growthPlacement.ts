@@ -8,10 +8,16 @@
 // Pura, determinística para a mesma sequência de Rng, não altera nada
 // do que recebe. Indexada por WorldGrowthKind (não usa ThemeKey).
 // =====================================================================
+import { footprintEmTerrenoValido, tipoConstruivel } from './buildable';
+import { centroVisual, construcoesSeTocam, retanguloDe, retanguloTocaCirculo } from './footprint';
+import { tilesDeCaminho } from './paths';
 import { ESCALA_MUNDO, H, W } from './rules';
 import {
+  MARGEM_PRACA_ANTES_DA_FONTE,
+  RAIO_PRACA,
   VILA,
   anelIdeal,
+  areaDaPraca,
   notaDeVizinhanca,
   notaRadial,
   raioDeAmostragem,
@@ -43,6 +49,10 @@ const unidades = (tilesDeDistancia: number) => tilesDeDistancia / ESCALA_MUNDO;
  * visual: árvores quase se encostam, casas formam vila, construções grandes e
  * isoladas pedem mais respiro. Entre dois elementos vale a média das exigências,
  * salvo quando o par tem regra própria (DISTANCIA_ENTRE).
+ *
+ * Entre duas CONSTRUÇÕES (casa, casa maior, fonte) quem decide é o footprint
+ * (footprint.ts: retângulo ancorado na base). Estes valores só valem para pares
+ * em que um dos lados não tem retângulo (mina, observatório, protótipo).
  */
 const DISTANCIA_MINIMA_SPRITE: Partial<Record<SpriteKey, number>> = {
   arvore: 1.4,
@@ -57,15 +67,10 @@ const DISTANCIA_MINIMA_SPRITE: Partial<Record<SpriteKey, number>> = {
 };
 
 /**
- * Pares com distância própria (em unidades). Duas casas maiores precisam de mais
- * respiro; casa maior e casa pequena só precisam não se sobrepor (metade da largura
- * de cada PNG), para a maior caber no vão entre casas perto do núcleo.
+ * Pares com distância própria entre âncoras (em unidades). Hoje vazio: os pares
+ * entre construções passaram a ser decididos pelo footprint (FOLGA_ENTRE).
  */
-const DISTANCIA_ENTRE: Partial<Record<`${SpriteKey}|${SpriteKey}`, number>> = {
-  'casa_maior|casa_maior': 3.6,
-  'casa_maior|casa': 2.25,
-  'casa|casa_maior': 2.25,
-};
+const DISTANCIA_ENTRE: Partial<Record<`${SpriteKey}|${SpriteKey}`, number>> = {};
 
 /** Fallback para sprites sem entrada acima (torre, escavacao: só o protótipo usa). */
 const DISTANCIA_MINIMA_EVENTO: Record<WorldGrowthKind, number> = {
@@ -145,8 +150,6 @@ export function centralidadeHabitavel(mundo: World, x: number, y: number): numbe
   return Math.max(0, 1 - d / (2 * centro.raio));
 }
 
-/** Terreno onde nada se constrói nem cresce. */
-const CONSTRUIVEL_PROIBIDO: TileType[] = ['praia', 'montanha', 'neve'];
 
 const PLANTA_POR_BIOMA: Partial<Record<TileType, SpriteKey>> = {
   floresta: 'arvore',
@@ -171,11 +174,20 @@ function espacoEmVolta(mundo: World, x: number, y: number): number {
       const py = Math.round(y + Math.sin(angulo) * r);
       total++;
       if (px < 0 || py < 0 || px >= W || py >= H) continue;
-      const i = py * W + px;
-      if (!mundo.agua[i] && !CONSTRUIVEL_PROIBIDO.includes(mundo.tipo[i])) bons++;
+      if (tipoConstruivel(mundo.tipo[py * W + px])) bons++;
     }
   }
   return bons / total;
+}
+
+/** O retângulo da construção cobre algum tile de caminho? */
+function retanguloSobreARede(r: { esquerda: number; direita: number; topo: number; base: number }, naRede: Set<number>): boolean {
+  for (let y = Math.floor(r.topo); y < Math.ceil(r.base); y++) {
+    for (let x = Math.floor(r.esquerda); x < Math.ceil(r.direita); x++) {
+      if (naRede.has(y * W + x)) return true;
+    }
+  }
+  return false;
 }
 
 /** Terreno para construir em vila: planície e savana primeiro. */
@@ -227,9 +239,8 @@ function notaNaVila(
   bases: Partial<Record<TileType, number>>,
   construcao: 'casa' | 'casa_maior',
 ): number | null {
-  if (CONSTRUIVEL_PROIBIDO.includes(c.tipo) || !c.vila) return null;
-  const v = c.vila;
-  if (!v.temFonte && v.distanciaCentro < VILA.nucleoReservado) return null; // lugar da fonte
+  if (!tipoConstruivel(c.tipo) || !c.vila) return null;
+  const v = c.vila; // a praça já foi garantida em procurarLugar (restrição dura)
   if (construcao === 'casa' && v.distancia < VILA.limiteCasasPequenas) return null; // anel das maiores
   return (bases[c.tipo] ?? 0) + notaRadial(v.distancia, v.anel) + notaDeVizinhanca(v.construcaoMaisProxima);
 }
@@ -249,7 +260,7 @@ const REGRAS_CRESCIMENTO: Record<WorldGrowthKind, RegraDeCrescimento> = {
     pontuar(c) {
       if (c.vila) return notaNaVila(c, BASE_CASA, 'casa');
       // sem vila: escolhe onde a primeira nasce
-      if (CONSTRUIVEL_PROIBIDO.includes(c.tipo)) return null;
+      if (!tipoConstruivel(c.tipo)) return null;
       const agua = 2 - Math.abs(c.distAgua - PRIMEIRA_VILA.distanciaAguaIdeal) * PRIMEIRA_VILA.pesoAgua;
       return (BASE_CASA[c.tipo] ?? 0) + agua + c.espaco * PRIMEIRA_VILA.pesoEspaco;
     },
@@ -317,6 +328,8 @@ function procurarLugar(
 ): { x: number; y: number; sprite: SpriteKey } | null {
   const { evento, regra, vila } = busca;
   const referencia = vila ? referenciaDaVila(vila.assentamento) : null;
+  const praca = vila ? areaDaPraca(vila.assentamento) : null;
+  const naRede = vila?.assentamento.caminhos.length ? tilesDeCaminho(vila.assentamento.caminhos) : null;
   let melhor: { x: number; y: number; sprite: SpriteKey } | null = null;
   let nota = -Infinity;
 
@@ -340,11 +353,27 @@ function procurarLugar(
     const sprite = regra.sprite(mundo.tipo[i]);
     if (!sprite) continue;
 
+    // terreno: todo o retângulo da construção em terra firme, longe o bastante da água
+    if (!footprintEmTerrenoValido(mundo, sprite, x, y)) continue;
+
+    // praça: restrição dura — nenhuma construção invade a área livre da fonte
+    const meuRetangulo = retanguloDe(sprite, x, y);
+    // nem a rua: nesta versão a casa desvia do caminho, não o contrário
+    if (naRede && meuRetangulo && retanguloSobreARede(meuRetangulo, naRede)) continue;
+    if (praca && meuRetangulo && sprite !== 'fonte' && retanguloTocaCirculo(meuRetangulo, praca)) continue;
+    // a própria fonte precisa da praça inteira livre em volta dela
+    const minhaPraca = sprite === 'fonte' ? { ...centroVisual('fonte', x, y), raio: RAIO_PRACA } : null;
+
     const perto = { ...VAZIO };
     let bloqueado = false;
     for (const o of ocupantes) {
       const d = unidades(Math.hypot(o.x - x, o.y - y));
-      if (d < distanciaEntre(sprite, evento, o.tipo, o.evento)) {
+      // construção × construção: retângulos; se um lado não tem, distância entre âncoras
+      const tocam =
+        construcoesSeTocam({ tipo: sprite, x, y }, o) ?? d < distanciaEntre(sprite, evento, o.tipo, o.evento);
+      const retanguloDoOutro = minhaPraca ? retanguloDe(o.tipo, o.x, o.y) : null;
+      const invadePraca = minhaPraca !== null && retanguloDoOutro !== null && retanguloTocaCirculo(retanguloDoOutro, minhaPraca);
+      if (tocam || invadePraca) {
         bloqueado = true; // sobreposição visual
         break;
       }
@@ -427,10 +456,10 @@ export function colocarCrescimento(
   };
 }
 
-/** Fonte: o mais perto possível do centro lógico, dentro do núcleo reservado para ela. */
+/** Fonte: o mais perto possível do centro lógico, dentro da praça reservada para ela. */
 const REGRA_FONTE: RegraDeCrescimento = {
   pontuar(c) {
-    if (CONSTRUIVEL_PROIBIDO.includes(c.tipo) || !c.vila) return null;
+    if (!tipoConstruivel(c.tipo) || !c.vila) return null;
     return -c.vila.distanciaCentro * 2;
   },
   sprite: () => 'fonte',
@@ -454,8 +483,9 @@ export function colocarFonte(
       regra: REGRA_FONTE,
       vila: {
         assentamento,
-        anel: { ideal: 0, tolerancia: VILA.nucleoReservado },
-        raioDisco: VILA.nucleoReservado * 1.5 * ESCALA_MUNDO,
+        anel: { ideal: 0, tolerancia: 1 }, // a fonte não usa anel, só a distância ao centro
+        // perto do centro: a margem da reserva mais um pouco (em tiles)
+        raioDisco: MARGEM_PRACA_ANTES_DA_FONTE + 2,
       },
       pesoCentro: 0,
     },

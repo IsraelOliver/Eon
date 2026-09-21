@@ -12,6 +12,7 @@ import { CHAVES_TEMAS, TEMAS } from '../engine/themes';
 import type { Element, GrowthElement, Rng, Settlement, ThemeKey, World, WorldGrowthKind } from '../engine/types';
 import { ART, ART_H, ART_W, desenharTerreno } from '../render/buildPixels';
 import { montarLegenda } from '../render/legend';
+import { desenharCaminhos } from '../render/pathPixels';
 import { combinarParaDesenho } from '../render/renderElements';
 
 const DURACAO_BRILHO = 700; // ms
@@ -47,14 +48,17 @@ export function useWorld() {
   const animacao = useRef<number | null>(null);
   const reduzirMovimento = useReducedMotion();
 
-  const { mundo, elementos, crescimento, mensagem, idMensagem } = estado;
+  const { mundo, elementos, crescimento, settlements, mensagem, idMensagem } = estado;
 
   // buffer pesado: só é refeito quando o mundo muda
   const terreno = useMemo(() => desenharTerreno(mundo), [mundo]);
+  // caminhos das vilas: camada própria, refeita só quando a rede muda
+  const caminhos = useMemo(() => settlements.flatMap((s) => s.caminhos), [settlements]);
+  const camadaCaminhos = useMemo(() => desenharCaminhos(mundo, caminhos), [mundo, caminhos]);
   // lista leve de sprites: muda a cada elemento novo, sem tocar no terreno
   const paraDesenho = useMemo(
-    () => combinarParaDesenho(elementos, mundo.natureza, crescimento),
-    [elementos, mundo.natureza, crescimento],
+    () => combinarParaDesenho(elementos, mundo.natureza, crescimento, caminhos),
+    [elementos, mundo.natureza, crescimento, caminhos],
   );
   const legenda = useMemo(() => montarLegenda(), []);
   const contagem = contarPorTema(elementos);
@@ -96,6 +100,7 @@ export function useWorld() {
 
   return {
     terreno,
+    caminhos: camadaCaminhos,
     elementosParaDesenho: paraDesenho,
     brilho,
     largura: ART_W,

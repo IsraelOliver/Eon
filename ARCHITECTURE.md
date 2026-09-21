@@ -6,7 +6,7 @@ regras, desenho e interface em camadas que só dependem "para baixo".
 ```
 app/                         → rotas do expo-router (só telas, sem lógica)
   _layout.tsx                → raiz dos gestos, barra de status e pilha sem cabeçalho
-  index.tsx                  → tela: junta mapa, menus e avisos das features
+  index.tsx                  → composição: abas Aprender/Mundo, barra flutuante e avisos
 src/
   features/
     world/                   → tudo sobre o mundo procedural
@@ -24,6 +24,9 @@ src/
         growthElements.ts    → aplicarEventosDeCrescimento(): eventos → GrowthElement[] + vilas
         settlements.ts       → Settlement: núcleo lógico das vilas, zonas, anéis e fonte
         appearance.ts        → orientação (frente/trás) e variante (v1/v2) das residências
+        footprint.ts         → espaço de cada construção no chão (retângulo ancorado na base)
+        buildable.ts         → terreno construível: solo por tile, margem da água, validação do footprint
+        paths.ts             → rede de caminhos: praça, rota (Dijkstra), largura e bordas
       render/                → transforma o mundo em pixels (sem React)
         palette.ts           → cores do terreno, paleta dos sprites, modo pergaminho
         sprites.ts           → desenhos dos sprites em texto
@@ -31,6 +34,7 @@ src/
         spriteBuffers.ts     → (fallback) RGBA de um sprite desenhado em caracteres
         spriteAssets.ts      → papel + orientação + variante → PNG (único lugar dos require)
         legend.ts            → nome + cor de cada tipo de tile (para a legenda)
+        pathPixels.ts        → camada RGBA dos caminhos (buffer próprio, só da caixa da rede)
         renderElements.ts    → RenderElement + combinarParaDesenho(): junta as camadas
       components/            → peças visuais (React Native + Skia)
         WorldMap.tsx         → mapa em tela cheia (Skia), gestos de câmera, toque longo
@@ -49,8 +53,18 @@ src/
         types.ts             → Curiosity, CuriositySource, Tag, KnowledgeProfile,
                                LearningResult (reexporta os contratos de shared/domain)
         profile.ts           → criarPerfilVazio(), registrarAprendizado()
+        themes.ts            → NOMES_DE_TEMA: nome de cada tema na interface
       data/
         fixtures.ts          → curiosidades FICTÍCIAS só para teste
+      components/            → interface da aba Aprender (React Native, sem Skia)
+        LearningScreen.tsx   → a aba: feed + leitura por cima (estado da aberta)
+        CuriosityCard.tsx    → card do feed: pôster vertical com capa, degradê e título
+        CuriosityReader.tsx  → leitura em tela cheia: conteúdo, fontes, botão APRENDI
+      presentation/          → decisões de aparência que o engine não pode conhecer
+        coverImages.ts       → curiosidade → imagem local (único lugar dos require)
+        coverTheme.ts        → capa provisória por tema (cor + símbolo)
+      hooks/
+        useLearning.ts       → perfil da sessão; delega a decisão ao engine
     settings/                → configurações do app
       components/
         SettingsMenu.tsx     → engrenagem + janela "Configurações" (+ seção Desenvolvedor)
@@ -64,6 +78,8 @@ src/
     ui/FloatingButton.tsx    → botão quadrado flutuante num canto (respeita a safe area)
     ui/Window.tsx            → janela base: fundo escurecido, fade, título, conteúdo, rodapé
     ui/Slider.tsx            → controle deslizante (avisa o valor ao soltar)
+    ui/TabBar.tsx            → barra de navegação: cápsula flutuante (genérica, sem temas)
+    ui/Gradient.tsx          → degradê linear vertical (único lugar que sabe desenhar um)
     ui/icons.ts              → ícones da interface (único lugar para trocar por pixel art)
 ```
 
@@ -113,7 +129,11 @@ toque no botão → componente chama função recebida por props
 | Mudar quando a vila ganha a fonte       | `engine/settlements.ts` (`VILA.residenciasParaFonte`) |
 | Mudar para onde as casas olham          | `engine/appearance.ts` (`escolherOrientacaoCasa`) |
 | Trocar/acrescentar PNG de construção    | `render/spriteAssets.ts` + `hooks/useSpriteImages.ts` |
-| Mudar distância entre dois tipos específicos | `engine/growthPlacement.ts` (`DISTANCIA_ENTRE`) |
+| Mudar o espaço que uma construção ocupa | `engine/footprint.ts` (`FOOTPRINT`, `FOLGA_ENTRE`) |
+| Mudar o tamanho da praça da fonte      | `engine/settlements.ts` (`RAIO_PRACA`) |
+| Mudar onde se pode construir / margem da água | `engine/buildable.ts` (`SOLO`, `MARGEM_AGUA`) |
+| Mudar largura/custo/forma dos caminhos  | `engine/paths.ts` (`LARGURA_CAMINHO`, `CUSTO_TERRENO`) |
+| Mudar a cor/borda da terra batida       | `render/palette.ts` (`CAMINHO`) + `render/pathPixels.ts` |
 | Mudar o tamanho da clareira das construções | `render/renderElements.ts` (`RAIO_CLAREIRA`) |
 | Mudar o grão/textura do terreno         | `render/palette.ts` (`TEXTURA`)       |
 | Mudar o quanto o crescimento puxa para o centro | `engine/growthPlacement.ts` (`PESO_CENTRO`) |
@@ -129,6 +149,17 @@ toque no botão → componente chama função recebida por props
 | Adicionar/remover um tema               | `shared/domain/themeKey.ts` (e `TEMAS` em `world/engine/themes.ts`) |
 | Adicionar um tipo de influência         | `shared/domain/influence.ts` + destino em `world/engine/growth.ts` |
 | Mudar o que aprender dá ao perfil       | `learning/engine/profile.ts`          |
+| Mudar qual aba abre primeiro            | `app/index.tsx` (`ABA_INICIAL`)       |
+| Mudar/acrescentar uma aba               | `app/index.tsx` (`ABAS`) + `shared/ui/icons.ts` |
+| Mudar o formato da barra de navegação   | `shared/ui/TabBar.tsx`                |
+| Mudar as curiosidades do feed           | `learning/data/fixtures.ts`           |
+| Mudar o card do feed                    | `learning/components/CuriosityCard.tsx` |
+| Colocar a capa de uma curiosidade       | `assets/images/learning/covers/` + `learning/presentation/coverImages.ts` |
+| Mudar a capa provisória de um tema      | `learning/presentation/coverTheme.ts` |
+| Mudar a força do degradê do card        | `learning/components/CuriosityCard.tsx` (`DEGRADE`) |
+| Mudar o formato do pôster               | `learning/components/CuriosityCard.tsx` (`PROPORCAO`, `RAIO`) |
+| Mudar a tela de leitura / o botão APRENDI | `learning/components/CuriosityReader.tsx` |
+| Mudar o nome de um tema na interface    | `learning/engine/themes.ts` (`NOMES_DE_TEMA`) |
 | Mudar que evento cada influência gera   | `world/engine/growth.ts` (`EVENTO_POR_INFLUENCIA`) |
 | Adicionar um tipo de evento de crescimento | `world/engine/types.ts` (`WorldGrowthKind`) + regra em `growthPlacement.ts` |
 | Mudar onde um evento pode surgir        | `world/engine/growthPlacement.ts` (`REGRAS_CRESCIMENTO`) |
@@ -159,8 +190,83 @@ Curiosity ─registrarAprendizado─▶ LearningResult.influencias ─gerarEvent
   - `'aprendida'`: novo perfil + `influencias` ganhas agora (a entrada futura para
     eventos de crescimento do mundo);
   - `'repetida'`: o mesmo perfil — uma curiosidade nunca dá progresso duas vezes.
-- Ainda **não existe**: tela, feed, persistência. Os dados em `data/fixtures.ts`
-  são fictícios.
+- Ainda **não existe**: persistência. Os dados em `data/fixtures.ts` são fictícios.
+
+### A aba Aprender
+
+```
+useLearning (perfil da sessão)
+   └─ LearningScreen ── feed: CuriosityCard[] (pôster vertical: capa + título)
+                     └─ leitura: CuriosityReader (tela cheia, por cima do feed)
+```
+
+- **`useLearning`** guarda o `KnowledgeProfile` da sessão em memória. Ele não
+  decide nada: chama `registrarAprendizado` e guarda o perfil devolvido. Em
+  `'repetida'` o perfil é o mesmo objeto, então nada muda na tela.
+- **`LearningScreen`** é a aba inteira. O feed é um `ScrollView` com padding de
+  baixo igual a `ALTURA_TAB_BAR + MARGEM_TAB_BAR` (o último card nunca fica
+  escondido pela barra). Qual curiosidade está aberta é estado dele; ele avisa a
+  composição por `onLeitura(lendo)` para a barra sumir durante a leitura.
+- **`CuriosityReader`** mostra tema, título, conteúdo, **fontes** (com
+  `Linking.openURL` quando têm `url`) e o botão **APRENDI**. Depois do toque
+  aparece "✓ Conhecimento adquirido." — o texto **não fala do mundo**, porque a
+  ligação com o mapa ainda não existe. A prop opcional `onVerMundo` é o gancho
+  para essa etapa: quando a composição passar essa ação, aparece "Ver no mundo".
+  Se a curiosidade já foi aprendida, o botão fica **APRENDIDA** e desabilitado.
+- Os nomes de tema vêm de `learning/engine/themes.ts`, não dos `TEMAS` do mundo:
+  `learning` **não importa** `world` (e vice-versa). O que os dois compartilham
+  mora em `shared/domain`.
+
+### O card do feed (CuriosityCard)
+
+Cada curiosidade é uma **capa**, não uma linha de lista. A hierarquia é
+imagem → título → CTA → tema → selo de aprendida.
+
+```
+┌──────────────┐  aspectRatio 3/4, raio 24, overflow: hidden
+│ TEMA   ✓ Apr │  ← linha de cima, absoluta
+│              │
+│  imagem      │  ← expo-image, contentFit: 'cover', em fill absoluto
+│ ░░░░░░░░░░░░ │  ← Gradient: transparente até 38%, quase preto na base
+│ Título grande│
+│ preview (2)  │
+│ ( ler… )     │
+└──────────────┘
+```
+
+- **`presentation/coverImages.ts`** é o único lugar que liga uma curiosidade a um
+  arquivo. Fica fora do `engine` de propósito: `Curiosity` não sabe que existem
+  imagens, então trocar todas as capas não toca em regra nenhuma. Os `require` são
+  estáticos (o Metro precisa vê-los) e precisam apontar para arquivos existentes.
+  O Metro empacota `jpg`/`png`/`webp`/`svg`, mas **não `.avif`** — converta antes.
+- Sem capa registrada, o card usa a **capa do tema** (`presentation/coverTheme.ts`):
+  cor + símbolo grande e apagado. O layout é o mesmo, então colocar a imagem
+  depois não muda nada de posição. Os arquivos vão em
+  `assets/images/learning/covers/` (veja o README de lá).
+- O texto do card é **branco nos dois modos** (claro e escuro), porque vive sempre
+  sobre imagem escurecida — por isso não sai de `shared/theme/colors.ts`. O título
+  ainda leva uma sombra suave, para o caso de uma capa muito clara.
+- O degradê vem de **`shared/ui/Gradient.tsx`**, que usa
+  `experimental_backgroundImage` do React Native 0.86 em vez de uma biblioteca
+  nova. Trocar por `expo-linear-gradient` um dia é mexer num arquivo só.
+
+## Navegação (app/index.tsx)
+
+- Duas abas: **Aprender** e **Mundo**. `ABA_INICIAL`, no topo de `app/index.tsx`,
+  é o único lugar que decide qual abre primeiro (hoje: `'mundo'`).
+- **As duas abas ficam montadas o tempo todo**; a inativa some com
+  `display: 'none'`. É o que mantém o mundo, o zoom da câmera e as curiosidades
+  aprendidas vivos ao trocar de aba — remontar recriaria o mundo e o buffer do
+  terreno. Também é o motivo de `useWorld()` viver na composição, não dentro de
+  um componente que some.
+- **`shared/ui/TabBar.tsx`** é genérico (`ItemDeNavegacao<T>`): uma cápsula
+  flutuante centralizada, acima da safe area (`bottom: insets.bottom + MARGEM_TAB_BAR`),
+  que **não ocupa a largura da tela** — o mapa continua visível por baixo. O item
+  ativo ganha uma cápsula interna. `zIndex: 30`, acima das janelas (10) e dos
+  avisos (20); a leitura (40) fica acima de tudo, mas a barra já saiu.
+- Os botões flutuantes do mapa continuam nos cantos esquerdos e não colidem com a
+  cápsula. O `ActionToast` de baixo recebe `offset={ALTURA_TAB_BAR + MARGEM_TAB_BAR}`
+  para aparecer **acima** da barra.
 
 ## Crescimento do mundo (world/engine/growth.ts)
 
@@ -245,12 +351,55 @@ natureza → primeiro povoamento → núcleo → vila → (futuro: especializaç
   até 8 unidades) e com a centralidade do mundo. Isso evita o centro colado na
   costa, que deixava metade do anel no mar e esticava a vila pelo litoral.
   Depois que a vila existe, a água não pesa mais.
-- **Zonas** (só regras de distância até a referência, nada persistido):
-  | Zona | Unidades | Quem |
+- **Footprint (`engine/footprint.ts`):** construções não são pontos. Como os
+  sprites são ancorados na **base** e sobem a partir dela, cada construção ocupa
+  um **retângulo** que vai da âncora para cima (mesma conta do render):
+  horizontal `x + 0,5 ± largura/2`, vertical de `y + 1 − altura` até `y + 1`.
+  Um círculo em volta da âncora deixava o telhado de uma casa de baixo passar por
+  cima da construção de cima. Medidas em **tiles** (o PNG não cresce com o mundo),
+  a partir do maior PNG de cada papel, já com sombra:
+  | Papel | Largura × altura | Folga | Entre duas iguais |
+  |---|---|---|---|
+  | casa pequena | 7 × 5,3 (21×16 px) | 0,5 | 1 tile |
+  | casa maior | 10,3 × 7,3 (31×22 px) | 1 | 5 tiles (`FOLGA_ENTRE` +3) |
+  | fonte | 7,3 × 4 (22×12 px) | 0 | — (o respiro dela é a praça) |
+  Duas construções colidem se os retângulos, expandidos pela soma das folgas (mais
+  a folga extra do par), se tocam. Construção contra mina, observatório ou
+  protótipo, que não têm retângulo, continua usando a distância entre âncoras.
+  **Se uma arte mudar de tamanho, atualize `FOOTPRINT`.**
+- **Terreno sob a construção (`engine/buildable.ts`):** a âncora não basta — o
+  sprite ocupa o retângulo inteiro. `footprintEmTerrenoValido` percorre **todos os
+  tiles tocados** pelo retângulo (arredondando para fora) e exige que cada um seja
+  de solo `firme` e esteja a pelo menos `MARGEM_AGUA` tiles da água (lê
+  `mundo.distAgua`, já calculado na geração).
+  | Solo (`SOLO`) | Tiles | Uso |
   |---|---|---|
-  | núcleo | < 2,1 (`nucleoReservado`) | só a fonte; residências não entram antes dela |
-  | anel das maiores | 2,1 – 2,8 (`limiteCasasPequenas`) | casas maiores (casa pequena não entra) |
-  | anel das casas | a partir de 3,2 (`raioInicial`), crescendo com √quantidade | casas pequenas |
+  | firme | planície, savana, floresta, deserto, tundra | pode ficar **sob** a construção |
+  | entorno | praia, montanha, neve | só **em volta**, nunca sob |
+  | inválido | oceano, água rasa, lago | nem sob, nem a menos da margem |
+  Margem da água (tiles): casa pequena 2, casa maior 4, fonte 3. Mina e
+  observatório não têm retângulo: para eles vale a checagem da âncora. A mesma
+  classificação (`tipoConstruivel`) é usada pelas regras de pontuação — não há
+  outra lista de "terreno proibido" no placement.
+- **Praça (`RAIO_PRACA`, 8 tiles):** área livre em volta do **centro visual** da
+  fonte (2 tiles acima da âncora). É **restrição dura**: nenhum retângulo de
+  construção pode tocá-la, e a preferência pelo centro nunca vence essa regra.
+  Antes de a fonte existir, a área fica reservada em volta do centro lógico com
+  `MARGEM_PRACA_ANTES_DA_FONTE` (2 tiles) a mais, para a fonte nascer um pouco
+  deslocada e ainda ter a praça livre; ao colocar a fonte, também se confere que
+  nenhuma construção existente invade a praça dela. É o espaço que um dia vira
+  praça desenhada, cruzamento e início das ruas (ainda não desenhado).
+- **Zonas** (distâncias até a referência, nada persistido):
+  | Zona | Onde | Quem |
+  |---|---|---|
+  | praça | até `RAIO_PRACA` do centro visual da fonte | só a fonte (restrição dura) |
+  | anel das maiores | a partir de `anelMaior` (**calculado**: praça + meia largura da casa maior + folga ≈ 4,4 un) | casas maiores, por preferência |
+  | anel das casas | depois de `limiteCasasPequenas` (anelMaior + 0,3), ideal a partir de `raioInicial` (anelMaior + 0,7), crescendo com √quantidade | casas pequenas |
+  Como os anéis derivam da praça e do footprint, uma arte maior ou uma praça
+  maior empurram os anéis sozinhas. Casas maiores ficam mais perto da fonte que as
+  pequenas na maioria das vilas (6/8 no teste), mas é **preferência**: quando o
+  anel interno já está cercado de casas pequenas, a maior que chega depois vai
+  para o vão livre mais perto, na borda.
 - **Crescimento em anel:** com vila, os candidatos são sorteados num **disco em
   volta da referência** (nunca menor que a vila inteira mais uma folga). A nota
   usa `notaRadial` (máxima no anel ideal, zero a uma `tolerancia` dele, negativa
@@ -271,14 +420,61 @@ natureza → primeiro povoamento → núcleo → vila → (futuro: especializaç
 - **Várias vilas:** tudo já é `settlements: Settlement[]`. A escolha passa por
   `assentamentoAlvo()`, que hoje devolve a mais antiga. Segunda vila, porto,
   colônia ou posto avançado = mudar essa função (e o critério de criar uma nova).
-- **Medido** (5 seeds, 16 povoamentos + 4 infraestruturas, comparado à V1):
-  alongamento médio 1,44 → 1,26 (mais redonda), raio máximo 29 → 25 tiles; casas
-  maiores mais perto da fonte que as pequenas em todas as seeds.
+- **Medido** (8 seeds, 16 povoamentos + 4 infraestruturas, com o tamanho real
+  dos PNGs): **0 sobreposições visuais** (eram 33 antes do footprint), praça
+  livre (construção mais próxima a 9 tiles do centro da fonte), vizinha mais
+  próxima de cada casa a ~8,4 tiles. O raio médio da vila é ~21 tiles (era ~16
+  sem praça e com sprites se sobrepondo): é o custo da praça + anel das maiores +
+  PNGs mais largos com sombra, não de casas mais afastadas entre si.
+  Com a validação de terreno (12 seeds): **0 construções com água ou praia
+  embaixo** (eram 29 e 22), sem mudar o raio da vila.
+- **Limitação conhecida:** a faixa exclusiva das casas maiores (entre
+  `anelMaior` e `limiteCasasPequenas`) tem só ~1 tile. Com terreno válido de
+  verdade, cabem ali uma ou duas casas maiores; as seguintes vão para o vão livre
+  mais próximo, muitas vezes além das pequenas. Garantir o anel interno pediria
+  uma faixa da altura de uma casa maior (~7 tiles), o que espalharia a vila.
 
 **Clareira (temporária, só no desenho):** `combinarParaDesenho` esconde os
 `NaturalElement` a menos de `RAIO_CLAREIRA` (6 tiles) de uma construção (casa,
-casa maior, fonte, mina, observatório e as do protótipo). Plantas do jogador não
-abrem clareira. `mundo.natureza` não muda — continua a mesma lista da seed.
+casa maior, fonte, mina, observatório e as do protótipo) e os que caem sobre um
+caminho (até `MARGEM_CAMINHO`, 1 tile). Plantas do jogador não abrem clareira.
+`mundo.natureza` não muda — continua a mesma lista da seed.
+
+## Caminhos da vila (engine/paths.ts)
+
+`Settlement.caminhos: PathTile[]` (`{ x, y, tipo: 'principal' | 'secundario' |
+'acesso' }`) é a rede de terra batida. Ela pertence à civilização, como as
+construções; a natureza não sabe dela.
+
+- **A praça abre a rede.** Quando a fonte nasce, `criarPraca` marca um disco
+  irregular de ~5,5 tiles em volta dela (menos a fonte e as construções) como
+  `principal`. A área já estava livre por causa de `RAIO_PRACA`.
+- **Rede compartilhada, não tentáculos.** `conectarARede` roda um Dijkstra a
+  partir da **entrada** da construção (`pontoDeEntrada`, o tile ao pé do lado da
+  porta) e para no **primeiro tile de caminho que encontrar** — a praça ou
+  qualquer rua já existente. Por isso a casa nova se pendura na rede mais
+  próxima, em vez de puxar uma linha própria até a fonte. Medido: rede com 380 a
+  435 tiles onde a soma das linhas retas casa→fonte daria 460 a 560.
+- **Custos** (`CUSTO_TERRENO`): caminho existente 1, planície/savana 4,
+  floresta/tundra/deserto 6, praia 20, montanha/neve 60; água e footprint de
+  construção são proibidos. Mais `PENALIDADE_CURVA` 3 por curva de 90° e um
+  ruído determinístico de até 2 por tile (`hash2`), que tira a régua da rota sem
+  virar zigue-zague. O estado da busca é (tile, direção), por causa da curva.
+- **Classificação:** as duas primeiras rotas depois da praça viram `principal`
+  (`VILA.viasPrincipais` conta), as seguintes `secundario`, e os últimos ~3 tiles
+  junto da casa viram `acesso`.
+- **Largura e bordas:** `LARGURA_CAMINHO` (principal 3, secundário 2, acesso 1
+  tiles) engrossa a linha central; o raio varia ±0,4 por tile (`hash2`) e, no
+  desenho, os pixels da beira são comidos com 28% de chance. Medido: densidade
+  média de vizinhos na rede 6,6 (principal) > 5,1 (secundário) > 3,2 (acesso).
+- **Construção e rua não se atravessam:** o engrossamento e a praça pulam os
+  retângulos das construções, e uma construção nova não pode nascer sobre a rede
+  (nesta V1 a casa desvia da rua; a V2 fará a casa nascer ao lado dela).
+- **Render:** `render/pathPixels.ts` monta um buffer RGBA só da caixa da rede
+  (~97 KB numa vila de 20 construções, contra 5,3 MB do terreno) e o `WorldMap`
+  desenha essa camada entre o terreno e os sprites. Crescer **não** recria o
+  terreno.
+- **Custo:** ~1,3 ms por construção ligada (medido em 160 conexões).
 
 ## Terra nunca toca a borda
 
@@ -323,16 +519,14 @@ nada do que recebe.
   gera no máximo uma colocação.
 - **Ocupações:** `WorldOccupant` (`{ evento, tipo?, x, y }`) é a lista do que já
   existe.
-- **Espaçamento por sprite:** `DISTANCIA_MINIMA_SPRITE` diz quanto espaço cada
-  sprite pede (em unidades); entre dois elementos vale a média das exigências,
-  **salvo pares com regra própria** (`DISTANCIA_ENTRE`). Sprites sem entrada
-  (`torre`, `escavacao`, do protótipo) caem em `DISTANCIA_MINIMA_EVENTO`. Valores
-  atuais: árvores 1,4 (acácia 1,6), `casa` 2,2, `casa_maior` 2,6, `fonte` 2,
-  `mina` 4, `observatorio` 5. Pares: `casa_maior ↔ casa_maior` 3,6 (respiro entre
-  construções importantes) e `casa_maior ↔ casa` 2,25 (só não sobrepor, para a
-  maior caber no vão entre casas). Uma distância única e rígida para a construção
-  maior fazia ela ir parar fora da vila. Como o sprite da vegetação depende do
-  bioma, ele é decidido **antes** da checagem de distância.
+- **Espaçamento:** entre duas **construções** (casa, casa maior, fonte) quem
+  decide é o footprint (retângulos, ver "Assentamentos"). Para os demais pares
+  vale a distância entre âncoras: `DISTANCIA_MINIMA_SPRITE` diz quanto espaço cada
+  sprite pede (em unidades) e usa-se a média das duas exigências (ou
+  `DISTANCIA_ENTRE`, hoje vazio). Sprites sem entrada (`torre`, `escavacao`, do
+  protótipo) caem em `DISTANCIA_MINIMA_EVENTO`. Valores: árvores 1,4 (acácia 1,6),
+  `casa` 2,2, `casa_maior` 2,6, `fonte` 2, `mina` 4, `observatorio` 5. Como o
+  sprite da vegetação depende do bioma, ele é decidido **antes** da checagem.
 - **Agrupamento:** `AGRUPAMENTO` guarda peso e alcance, e `atracao(d, regra)` cai
   linearmente até zero no alcance. Vegetação forte (2,5 / 5) para formar
   bosquezinhos; mina e observatório não agrupam. Construções de vila se organizam
@@ -408,8 +602,9 @@ nada do que recebe.
 
 ## Interface sobre o mapa
 
-- A tela é só o mapa. Por cima dele há dois `FloatingButton` (engrenagem no canto
-  superior esquerdo, menu no inferior esquerdo) e dois `ActionToast`.
+- A aba Mundo é só o mapa. Por cima dele há dois `FloatingButton` (engrenagem no
+  canto superior esquerdo, menu no inferior esquerdo), dois `ActionToast` e a
+  barra de navegação (veja "Navegação").
 - **Toda janela usa `shared/ui/Window.tsx`.** Ela é uma camada da própria tela
   (`Animated.View` com `FadeIn`/`FadeOut` e `zIndex: 10`), não um `Modal`. Motivos:
   avisos precisam aparecer **por cima** da janela aberta, e gestos do

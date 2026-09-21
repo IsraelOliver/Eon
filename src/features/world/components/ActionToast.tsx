@@ -19,10 +19,12 @@ type Props = {
   position?: 'top' | 'bottom';
   /** Quanto tempo o aviso fica visível, em ms. */
   duration?: number;
+  /** Espaço extra na borda de baixo, para não ficar atrás da barra de navegação. */
+  offset?: number;
 };
 
 /** Aviso pequeno e centralizado que some sozinho. Fica acima das janelas. */
-export function ActionToast({ mensagem, id, position = 'bottom', duration = 3000 }: Props) {
+export function ActionToast({ mensagem, id, position = 'bottom', duration = 3000, offset = 0 }: Props) {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const opacidade = useSharedValue(0);
@@ -39,7 +41,9 @@ export function ActionToast({ mensagem, id, position = 'bottom', duration = 3000
 
   const estiloAnimado = useAnimatedStyle(() => ({ opacity: opacidade.value }));
   const vertical =
-    position === 'top' ? { top: insets.top + FLOATING_MARGIN } : { bottom: insets.bottom + FLOATING_MARGIN };
+    position === 'top'
+      ? { top: insets.top + FLOATING_MARGIN }
+      : { bottom: insets.bottom + FLOATING_MARGIN + offset };
 
   return (
     <Animated.View

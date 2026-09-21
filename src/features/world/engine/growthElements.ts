@@ -4,7 +4,9 @@
 // Nada aqui conhece ThemeKey: a categoria é sempre o tipo de evento.
 // =====================================================================
 import { escolherOrientacaoCasa, escolherVariante } from './appearance';
+import { pontoDeEntrada } from './footprint';
 import { colocarCrescimento, colocarFonte } from './growthPlacement';
+import { conectarARede, criarPraca, mesclarCaminhos } from './paths';
 import {
   VILA,
   assentamentoAlvo,
@@ -49,6 +51,22 @@ function comAparencia(elemento: GrowthElement, vila: Settlement, seed: number): 
     ...elemento,
     orientacao: escolherOrientacaoCasa(elemento, referenciaDaVila(vila), seed),
     variante: escolherVariante(elemento.x, elemento.y, seed),
+  };
+}
+
+/** Liga a entrada de uma construção à rede da vila (e conta os eixos principais). */
+function comCaminhoAte(
+  mundo: World,
+  vila: Settlement,
+  ocupantes: readonly WorldOccupant[],
+  construcao: GrowthElement,
+): Settlement {
+  const tiles = conectarARede(mundo, vila, ocupantes, pontoDeEntrada(construcao), vila.viasPrincipais);
+  if (!tiles || !tiles.length) return vila;
+  return {
+    ...vila,
+    caminhos: mesclarCaminhos(vila.caminhos, tiles),
+    viasPrincipais: vila.viasPrincipais + (tiles.some((t) => t.tipo === 'principal') ? 1 : 0),
   };
 }
 
@@ -107,6 +125,8 @@ export function aplicarEventosDeCrescimento(
     if (!vila) continue;
 
     vila = incluirNoAssentamento(vila, elemento.x, elemento.y);
+    // com a rede já existindo, a construção nova se liga ao caminho mais próximo
+    if (vila.fonte) vila = comCaminhoAte(mundo, vila, ocupantes, elemento);
     settlements = substituir(settlements, vila);
 
     // a vila amadureceu: ganha a fonte, uma só, perto do centro
@@ -124,6 +144,15 @@ export function aplicarEventosDeCrescimento(
         adicionados.push(fonte);
         ocupantes.push(comoOcupante(fonte));
         vila = incluirNoAssentamento(vila, fonte.x, fonte.y, true);
+
+        // a fonte abre a praça e, com ela, a rede: as construções que já existiam
+        // se ligam da mais perto para a mais longe (as 2 primeiras viram eixos)
+        vila = { ...vila, caminhos: criarPraca(mundo, lugar, ocupantes) };
+        const daVila = [...elementosAtuais, ...adicionados]
+          .filter((e) => e.settlementId === vila!.id && e.tipo !== 'fonte')
+          .sort((a, b) => Math.hypot(a.x - lugar.x, a.y - lugar.y) - Math.hypot(b.x - lugar.x, b.y - lugar.y));
+        for (const construcao of daVila) vila = comCaminhoAte(mundo, vila, ocupantes, construcao);
+
         settlements = substituir(settlements, vila);
       }
       // sem espaço agora: tenta de novo na próxima construção da vila

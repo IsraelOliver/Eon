@@ -5,35 +5,61 @@
 // Funções puras; nenhuma lista recebida é alterada.
 //
 // Zonas (só regras de distância, nada persistido):
-//   núcleo       → fonte e casas maiores
-//   anel interno → casas pequenas e algumas maiores
+//   praça        → fonte e espaço livre em volta (restrição dura, ver RAIO_PRACA)
+//   anel interno → casas maiores, logo fora da praça
 //   anel externo → casas pequenas, expansão
 // =====================================================================
+import { FOOTPRINT, centroVisual, type Circulo } from './footprint';
 import { ESCALA_MUNDO } from './rules';
 import type { Settlement } from './types';
+
+/**
+ * Raio (em TILES) da área livre em volta da fonte — o futuro centro da vila
+ * (praça, cruzamento, início das ruas). Nenhuma construção pode invadi-la.
+ * Medido a partir do centro visual da fonte.
+ */
+export const RAIO_PRACA = 8;
+
+/**
+ * Antes de a fonte existir, a praça fica reservada em volta do centro lógico com
+ * esta margem a mais (tiles): a fonte pode nascer um pouco deslocada do centro e
+ * ainda ter a praça inteira livre.
+ */
+export const MARGEM_PRACA_ANTES_DA_FONTE = 2;
+
+/** A área livre da vila: em volta da fonte, ou reservada em volta do centro. */
+export function areaDaPraca(s: Settlement): Circulo {
+  if (s.fonte) return { ...centroVisual('fonte', s.fonte.x, s.fonte.y), raio: RAIO_PRACA };
+  return { x: s.x + 0.5, y: s.y + 0.5, raio: RAIO_PRACA + MARGEM_PRACA_ANTES_DA_FONTE };
+}
+
+/**
+ * Onde começa o anel das casas maiores (em unidades): a menor distância em que
+ * uma casa maior cabe inteira fora da praça. Calculado a partir da praça e do
+ * footprint — se a arte mudar de tamanho, a vila se ajusta sozinha.
+ */
+const INICIO_ANEL_MAIOR = (() => {
+  const maior = FOOTPRINT.casa_maior!;
+  return (RAIO_PRACA + maior.largura / 2 + maior.folga) / ESCALA_MUNDO;
+})();
 
 /**
  * Forma da vila, em UNIDADES (1 unidade = 1 tile do mundo 150x100, como em
  * growthPlacement). Aumentar o mundo não muda a calibração.
  */
 export const VILA = {
+  /** Anel ideal das casas maiores: logo fora da praça, crescendo devagar. */
+  anelMaior: INICIO_ANEL_MAIOR,
+  crescimentoMaior: 0.3,
   /**
-   * Núcleo da fonte: nenhuma residência entra nele enquanto a vila não tem fonte.
-   * Sem isso, as primeiras casas ocupariam o meio e a fonte cairia fora.
+   * Casas pequenas não ficam a menos disto da referência: a faixa logo fora da
+   * praça fica preferencialmente para as casas maiores (construções importantes).
    */
-  nucleoReservado: 2.1,
-  /**
-   * Casas pequenas nunca ficam a menos disto da fonte/centro: a faixa entre o
-   * núcleo e este raio é o anel das casas maiores (construções importantes).
-   */
-  limiteCasasPequenas: 2.8,
-  /** Anel ideal das casas pequenas: começa fora do anel das maiores... */
-  raioInicial: 3.2,
+  limiteCasasPequenas: INICIO_ANEL_MAIOR + 0.3,
+  /** Anel ideal das casas pequenas: começa logo depois do anel das maiores... */
+  raioInicial: INICIO_ANEL_MAIOR + 0.7,
   /** ...e cresce com √(quantidade de elementos): miolo primeiro, depois para fora. */
-  crescimento: 0.9,
-  /** Anel ideal das casas maiores: logo em volta do núcleo, crescendo devagar. */
-  anelMaior: 2.6,
-  crescimentoMaior: 0.35,
+  crescimento: 0.6,
   /** Quanto a distância pode fugir do anel e ainda pontuar. */
   tolerancia: 2,
   /** Peso do anel na nota (o terreno pesa ~0,3 a 2). */
@@ -99,7 +125,7 @@ export function notaDeVizinhanca(construcaoMaisProxima: number): number {
 }
 
 export function criarAssentamento(existentes: readonly Settlement[], x: number, y: number): Settlement {
-  return { id: `vila-${existentes.length + 1}`, x, y, raio: 0, quantidadeElementos: 0 };
+  return { id: `vila-${existentes.length + 1}`, x, y, raio: 0, quantidadeElementos: 0, caminhos: [], viasPrincipais: 0 };
 }
 
 /** Um elemento novo entrou na vila: conta mais um, o raio pode crescer e a fonte é registrada. */

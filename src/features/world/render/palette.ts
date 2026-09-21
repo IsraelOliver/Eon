@@ -28,6 +28,9 @@ export const PINTA: Partial<Record<TileType, string>> = {
   praia: '#d3b87c',
 };
 
+/** Terra batida dos caminhos da vila (camada própria, por cima do terreno). */
+export const CAMINHO = '#a8834f';
+
 export const LINHA_COSTA = '#1d4a9e';
 export const ONDA = '#5b9ef0';
 export const BORDA_AREIA = '#c7a66a';

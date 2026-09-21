@@ -14,4 +14,6 @@ export type Icon = string | ImageSourcePropType;
 export const ICONS = {
   gear: '⚙︎',
   menu: '☰',
+  aprender: '✦',
+  mundo: '◉',
 } satisfies Record<string, Icon>;
