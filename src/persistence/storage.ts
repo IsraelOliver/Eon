@@ -4,7 +4,7 @@
 // =====================================================================
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { ehSaveV1, type SaveV1 } from './save';
+import { migrarParaAtual, type SaveV2 } from './save';
 
 /** Único lugar onde a chave existe. Trocá-la é começar do zero. */
 const CHAVE = '@eon/save';
@@ -22,21 +22,22 @@ let fila: Promise<void> = Promise.resolve();
  * O save guardado, ou `null` quando não há nenhum, o conteúdo não é nosso, está
  * corrompido ou é de uma versão que este app não conhece.
  *
- * Nunca lança: em qualquer um desses casos o app começa um estado novo. Quando
- * existir uma V2, é aqui que entram as migrações — hoje, versão desconhecida é
- * tratada como ausência de save.
+ * Nunca lança: em qualquer um desses casos o app começa um estado novo. Saves
+ * de formatos antigos são convertidos por `migrarParaAtual`; versão que nem a
+ * migração conhece é tratada como ausência de save.
  */
-export async function carregarSave(): Promise<SaveV1 | null> {
+export async function carregarSave(): Promise<SaveV2 | null> {
   try {
     const texto = await AsyncStorage.getItem(CHAVE);
     if (texto === null) return null; // primeira vez no aparelho
 
     const valor: unknown = JSON.parse(texto);
-    if (!ehSaveV1(valor)) {
+    const save = migrarParaAtual(valor); // converte formatos antigos
+    if (save === null) {
       console.warn('[eon] Save ignorado: formato inválido ou versão desconhecida.');
       return null;
     }
-    return valor;
+    return save;
   } catch (erro) {
     console.warn('[eon] Não foi possível ler o save:', erro);
     return null;
@@ -47,7 +48,7 @@ export async function carregarSave(): Promise<SaveV1 | null> {
  * Grava o save. Não bloqueia a interface e não lança: se a gravação falhar, o
  * jogo continua com o estado que está na memória.
  */
-export function salvarSave(save: SaveV1): Promise<void> {
+export function salvarSave(save: SaveV2): Promise<void> {
   fila = fila.then(async () => {
     try {
       await AsyncStorage.setItem(CHAVE, JSON.stringify(save));

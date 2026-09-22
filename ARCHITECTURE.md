@@ -62,13 +62,16 @@ src/
         coverTheme.ts        → capa provisória por tema (cor + símbolo)
       hooks/
         useLearning.ts       → perfil da sessão; delega a decisão ao engine
+    onboarding/              → boas-vindas de uma jornada nova
+      regra.ts               → quando a apresentação aparece (pura)
+      components/JourneyIntro.tsx → o cartão por cima do mundo
     settings/                → configurações do app
       components/
         SettingsMenu.tsx     → janela "Configurações" (+ seção Desenvolvedor)
       hooks/
         useDevMode.ts        → modo desenvolvedor: 5 toques secretos liga/desliga
   persistence/               → o save (camada de composição, como app/)
-    save.ts                  → SaveV1 + ehSaveV1(): formato e conferência
+    save.ts                  → SaveV2 (+ migração da V1), conferência e decidirSave
     storage.ts               → AsyncStorage: ler, gravar em fila, apagar
   shared/                    → o que qualquer funcionalidade pode usar
     domain/themeKey.ts       → ThemeKey: temas em comum entre learning e world (tipo puro)
@@ -149,7 +152,7 @@ toque no botão → componente chama função recebida por props
 | Adicionar/remover um tema               | `shared/domain/themeKey.ts` + `learning/engine/themes.ts` |
 | Adicionar um tipo de influência         | `shared/domain/influence.ts` + destino em `world/engine/growth.ts` |
 | Mudar o que aprender dá ao perfil       | `learning/engine/profile.ts`          |
-| Mudar o formato do save                 | `persistence/save.ts` (`SaveV1`, `VERSAO_DO_SAVE`) |
+| Mudar o formato do save                 | `persistence/save.ts` (`SaveV2`, `VERSAO_DO_SAVE`, `migrarParaAtual`) |
 | Mexer na gravação/chave do save         | `persistence/storage.ts` (`@eon/save`) |
 | Mexer na aleatoriedade do crescimento   | `world/engine/growthElements.ts` (`rngDeCrescimento`) |
 | Mexer na ponte aprender → mundo         | `app/index.tsx` (`aoAprender`)        |
@@ -325,12 +328,13 @@ AppScreen
 ## O que é salvo e o que é recalculado
 
 O jogo é gravado no aparelho com **AsyncStorage**, na chave `@eon/save`, no
-formato `SaveV1` (`src/persistence/save.ts`).
+formato `SaveV2` (`src/persistence/save.ts`). Saves `SaveV1` antigos continuam
+sendo lidos e migrados.
 
 ```
 abrir o app
   → carregarSave()             (AsyncStorage)
-  → ehSaveV1(): confere versão e forma
+  → migrarParaAtual(): confere a forma e converte formato antigo
   → <Jogo save={…}>            só agora nascem useWorld e useLearning
   → gerarMundo(seed, nivelMar) reconstrói terreno e natureza
   → app renderiza já com o estado certo
@@ -342,8 +346,8 @@ desenharia o terreno e depois o jogaria fora — com piscada e trabalho perdido.
 Como o autosave vive dentro de `Jogo`, **ele não tem como rodar antes da
 hidratação**.
 
-**Autosave:** um `useMemo` monta o `SaveV1` a partir de
-`world.estadoPersistivel` e `aprendizado.perfil`, e um efeito grava quando essa
+**Autosave:** um `useMemo` monta o `SaveV2` a partir de
+`world.estadoPersistivel`, `aprendizado.perfil` e `onboardingConcluida`, e um efeito grava quando essa
 referência muda. Ou seja, grava quando muda semente, nível do mar, crescimento,
 vilas, `growthSequence` ou perfil — e **não** grava por abrir o aparelho, animar,
 dar zoom, mostrar aviso ou alternar telas.
@@ -401,6 +405,51 @@ rngDeCrescimento(mundo.seed, growthSequence)  →  mulberry32(combinarSementes(�
   do caso C prova.
 - O único sorteio que sobrou no mundo é `Math.random()` em `sementeAleatoria()`,
   e só na **criação**: a semente sorteada é guardada e tudo mais sai dela.
+
+## A apresentação da jornada
+
+Uma jornada nova é apresentada uma vez, por cima do mundo já carregado — o mapa
+fica visível atrás, que é o que dá sentido à frase "Este é o seu mundo.".
+
+```
+aprendidas === 0  &&  !onboardingConcluida  &&  !world.gerando  →  aparece
+```
+
+- **Depois de dispensada, não volta.** `onboardingConcluida` é gravado no save,
+  então fechar o app sem aprender nada não a traz de volta.
+- **Pertence à jornada, não à semente.** Trocar de mundo antes da primeira
+  descoberta não a faz reaparecer; **recomeçar a jornada**, sim — junto com o
+  perfil vazio e o mundo novo.
+- **Quem já aprendeu nunca a vê**, mesmo que o save diga o contrário: se existe
+  conhecimento, a jornada já começou.
+- **Não aparece durante uma recriação** (`world.gerando`): primeiro o mundo novo
+  fica pronto, depois a pessoa é apresentada a ele.
+- Enquanto está aberta é a **única coisa que aceita toque** — mapa, barra,
+  aparelho e janelas ficam fora de alcance, e `accessibilityViewIsModal` tira o
+  resto da árvore de acessibilidade. "Começar jornada" só fecha a apresentação:
+  não abre o feed.
+- A regra mora em `features/onboarding/regra.ts` (pura), e a composição só
+  pergunta. O componente é `features/onboarding/components/JourneyIntro.tsx`.
+
+### SaveV2 e a migração
+
+Guardar isso exigiu subir o formato, porque com o perfil vazio "já vi a
+apresentação" e "nunca vi" são estados idênticos — não dá para derivar. Uma
+chave separada no armazenamento também não serviria: ficaria fora da fila de
+escrita segura, criando uma segunda fonte de verdade que poderia divergir da
+jornada durante um reset.
+
+```
+SaveV1 → { version: 1, world, learning }
+SaveV2 → { version: 2, world, learning, onboardingConcluida }
+```
+
+`carregarSave` passa tudo por `migrarParaAtual`: V2 vem direto, V1 é convertida
+por `migrarV1`, e qualquer outra versão vira "sem save". A regra da migração é
+`onboardingConcluida = perfil.aprendidas.length > 0` — quem já aprendeu alguma
+coisa já começou a jornada e não deve ver a apresentação; save antigo com perfil
+vazio volta a vê-la, que é o certo para quem ainda não começou. **Saves antigos
+não são apagados**: são lidos e convertidos.
 
 ## A jornada consolida o mundo
 

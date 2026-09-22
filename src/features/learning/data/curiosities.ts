@@ -67,25 +67,44 @@ export interface CuriosityEntry extends Curiosity {
  */
 export const CURIOSIDADES: readonly CuriosityEntry[] = [
   {
-    id: 'teste-natureza-1',
+    id: 'espiritu-pampa',
 
-    titulo: '[Teste] Uma planta fictícia',
+    titulo: 'A cidade perdida que ficou escondida por séculos!',
 
-    capa: require('../../../../assets/curiosities/teste-natureza-1.jpg'),
+    capa: require('../../../../assets/curiosities/espiritu-pampa.jpg'),
 
-    preview: 'Texto de exemplo para a lista.',
+    preview: 'Por séculos, a última capital dos incas permaneceu escondida na selva peruana, enquanto exploradores procuravam a cidade perdida no lugar errado.',
 
-    conteudo: 'Conteúdo de exemplo. Esta curiosidade não é real.',
+    conteudo: `
+Depois da chegada dos conquistadores espanhóis, parte da resistência inca se refugiou em Vilcabamba, uma região remota e montanhosa do Peru. Ali, os últimos governantes incas mantiveram um estado independente por décadas, até a conquista espanhola definitiva em 1572.
 
-    tema: 'natureza',
+Séculos depois, exploradores ainda tentavam localizar essa última capital. Em 1911, Hiram Bingham procurava a chamada “cidade perdida dos incas” e chegou tanto a Machu Picchu quanto às ruínas de Espíritu Pampa. Ele, porém, acreditou que Machu Picchu era a cidade que procurava e considerou Espíritu Pampa pouco impressionante.
 
-    tags: ['plantas', 'floresta'],
+A interpretação mudou décadas mais tarde. Pesquisas posteriores mostraram que Espíritu Pampa era muito maior do que Bingham havia imaginado e é hoje associada à verdadeira Vilcabamba, o último grande refúgio dos incas antes da conquista espanhola.
 
-    influencias: [{ chave: 'vegetacao', peso: 2 }],
+O local continua sendo estudado. Escavações também revelaram evidências de ocupação anterior à presença inca, incluindo construções ligadas à cultura Wari. Isso mostra que a região teve importância muito antes dos últimos anos do Império Inca.
+  `.trim(),
 
-    fontes: [{ titulo: 'Fonte fictícia A', url: 'https://example.com/a' }],
+    tema: 'historia',
 
-    verificadoEm: '2026-09-01',
+    tags: ['incas', 'peru', 'vilcabamba', 'espiritu-pampa', 'arqueologia'],
+
+    influencias: [{ chave: 'povoamento', peso: 2 }],
+
+    fontes: [{
+      titulo: 'National Geographic — Machu Picchu and the Lost City of the Incas',
+      url: 'https://www.nationalgeographic.com/history/article/machu-picchu-mystery',
+    },
+    {
+      titulo: 'National Geographic — Finding Machu Picchu: Hiram Bingham',
+      url: 'https://www.nationalgeographic.com/adventure/article/machu-picchu-hiram-bingham',
+    },
+    {
+      titulo: 'Dirección Desconcentrada de Cultura de Cusco — Hallazgos en Espíritu Pampa',
+      url: 'https://www.culturacusco.gob.pe/noticia/patrimonio-cultural/importantes-hallazgos-reportan-en-sitio-arqueologico-de-espiritupampa/',
+    },],
+
+    verificadoEm: '2026-09-21',
   },
   {
     id: 'teste-historia-1',

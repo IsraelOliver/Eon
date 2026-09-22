@@ -13,7 +13,9 @@ import { WorldMap } from '@/features/world/components/WorldMap';
 import { gerarEventosDeCrescimento } from '@/features/world/engine/growth';
 import { useLearning } from '@/features/learning/hooks/useLearning';
 import { useWorld } from '@/features/world/hooks/useWorld';
-import { VERSAO_DO_SAVE, decidirSave, type SaveV1 } from '@/persistence/save';
+import { JourneyIntro } from '@/features/onboarding/components/JourneyIntro';
+import { deveMostrarIntroDaJornada } from '@/features/onboarding/regra';
+import { VERSAO_DO_SAVE, decidirSave, type SaveV2 } from '@/persistence/save';
 import { carregarSave, salvarSave } from '@/persistence/storage';
 import { useColors } from '@/shared/theme/colors';
 import { ActionBar, centroDoItem, type AcaoDaBarra } from '@/shared/ui/ActionBar';
@@ -32,7 +34,7 @@ const TOTAL_DE_ACOES = 2;
  */
 export default function AppScreen() {
   const c = useColors();
-  const [save, setSave] = useState<SaveV1 | null | undefined>(undefined);
+  const [save, setSave] = useState<SaveV2 | null | undefined>(undefined);
 
   useEffect(() => {
     let vivo = true;
@@ -62,7 +64,7 @@ export default function AppScreen() {
  * Só é montado depois que o save foi resolvido, então `useWorld` e `useLearning`
  * já nascem com o estado certo — e o autosave nunca roda antes da hidratação.
  */
-function Jogo({ save }: { save: SaveV1 | null }) {
+function Jogo({ save }: { save: SaveV2 | null }) {
   const c = useColors();
   const [configAberto, setConfigAberto] = useState(false);
   const [aprenderAberto, setAprenderAberto] = useState(false);
@@ -73,6 +75,8 @@ function Jogo({ save }: { save: SaveV1 | null }) {
   const insets = useSafeAreaInsets();
   const world = useWorld(save?.world);
   const aprendizado = useLearning(save?.learning.perfil);
+  /** Sem save, a jornada é nova: a apresentação ainda não foi vista. */
+  const [onboardingConcluida, setOnboardingConcluida] = useState(save?.onboardingConcluida ?? false);
   const dev = useDevMode();
 
   /*
@@ -112,6 +116,13 @@ function Jogo({ save }: { save: SaveV1 | null }) {
    */
   const mundoConsolidado = aprendizado.perfil.aprendidas.length > 0;
 
+  /** Boas-vindas de jornada nova: uma vez só, e nunca no meio de um carregamento. */
+  const mostrarIntro = deveMostrarIntroDaJornada({
+    aprendidas: aprendizado.perfil.aprendidas.length,
+    onboardingConcluida,
+    gerando: world.gerando,
+  });
+
   /**
    * Recomeçar: apaga conhecimento e mundo **juntos**. As duas mudanças saem no
    * mesmo evento, então o React as agrupa num render só, e o mundo novo nasce
@@ -119,6 +130,7 @@ function Jogo({ save }: { save: SaveV1 | null }) {
    */
   const recomecarJornada = useCallback(() => {
     aprendizado.reiniciar();
+    setOnboardingConcluida(false); // jornada nova, apresentação de volta
     world.novoMundo();
   }, [aprendizado, world]);
 
@@ -132,13 +144,14 @@ function Jogo({ save }: { save: SaveV1 | null }) {
    * quando algo que vale a pena guardar muda — abrir o aparelho, animar, dar
    * zoom ou mostrar um aviso não mexem nestas referências.
    */
-  const saveAtual = useMemo<SaveV1>(
+  const saveAtual = useMemo<SaveV2>(
     () => ({
       version: VERSAO_DO_SAVE,
       world: world.estadoPersistivel,
       learning: { perfil: aprendizado.perfil },
+      onboardingConcluida,
     }),
-    [world.estadoPersistivel, aprendizado.perfil],
+    [world.estadoPersistivel, aprendizado.perfil, onboardingConcluida],
   );
 
   /**
@@ -243,6 +256,9 @@ function Jogo({ save }: { save: SaveV1 | null }) {
       />
       {/* A barra vale para o app inteiro: fica acima do mundo e do aparelho. */}
       <ActionBar itens={acoes} ativo={aprenderAberto ? 'celular' : 'mundo'} />
+
+      {/* Por último: enquanto está aberta, é a única coisa que aceita toque. */}
+      {mostrarIntro && <JourneyIntro onComecar={() => setOnboardingConcluida(true)} />}
     </View>
   );
 }

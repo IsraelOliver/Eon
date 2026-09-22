@@ -7,6 +7,8 @@ const light = {
   muted: '#51626d',
   line: '#b9cad0',
   pressed: 'rgba(28,42,51,0.08)',
+  /** Fundo escurecido por trás de janelas e da apresentação da jornada. */
+  overlay: 'rgba(0,0,0,0.6)',
   /** Barra de navegação flutuante e destaque do item ativo. */
   barra: 'rgba(22,32,40,0.92)',
   barraAtivo: '#f2f6f7',
@@ -33,6 +35,7 @@ const dark: Colors = {
   muted: '#9fb3c2',
   line: '#2c4560',
   pressed: 'rgba(230,238,243,0.08)',
+  overlay: 'rgba(0,0,0,0.6)',
   barra: 'rgba(12,22,34,0.92)',
   barraAtivo: '#26405c',
   barraTexto: '#9fb3c2',
