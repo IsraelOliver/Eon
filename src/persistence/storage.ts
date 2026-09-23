@@ -4,7 +4,7 @@
 // =====================================================================
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { migrarParaAtual, type SaveV2 } from './save';
+import { migrarParaAtual, type SaveData } from './save';
 
 /** Único lugar onde a chave existe. Trocá-la é começar do zero. */
 const CHAVE = '@eon/save';
@@ -26,7 +26,7 @@ let fila: Promise<void> = Promise.resolve();
  * de formatos antigos são convertidos por `migrarParaAtual`; versão que nem a
  * migração conhece é tratada como ausência de save.
  */
-export async function carregarSave(): Promise<SaveV2 | null> {
+export async function carregarSave(): Promise<SaveData | null> {
   try {
     const texto = await AsyncStorage.getItem(CHAVE);
     if (texto === null) return null; // primeira vez no aparelho
@@ -48,7 +48,7 @@ export async function carregarSave(): Promise<SaveV2 | null> {
  * Grava o save. Não bloqueia a interface e não lança: se a gravação falhar, o
  * jogo continua com o estado que está na memória.
  */
-export function salvarSave(save: SaveV2): Promise<void> {
+export function salvarSave(save: SaveData): Promise<void> {
   fila = fila.then(async () => {
     try {
       await AsyncStorage.setItem(CHAVE, JSON.stringify(save));

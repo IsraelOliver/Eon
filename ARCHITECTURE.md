@@ -16,6 +16,8 @@ src/
         rules.ts             → REGRAS do mundo, ESCALA_MUNDO, faixas e nomes
         generate.ts          → gera o mundo (semente + nível do mar como parâmetros)
         nature.ts            → decoração natural do mundo selvagem (árvores, pedras…)
+        destaque.ts          → escolhe a novidade a mostrar depois de aprender (+ a frase)
+        selecao.ts           → qual construção está sob o toque (+ nomes das construções)
         inspect.ts           → descreverTile(): bioma, altitude e umidade de um tile
         growth.ts            → gerarEventosDeCrescimento(): influências → eventos abstratos
         growthPlacement.ts   → colocarCrescimento(): evento → lugar válido + sprite
@@ -34,15 +36,18 @@ src/
         legend.ts            → nome + cor de cada tipo de tile (para a legenda)
         pathPixels.ts        → camada RGBA dos caminhos (buffer próprio, só da caixa da rede)
         renderElements.ts    → RenderElement + combinarParaDesenho(): junta as camadas
+        calloutGeometria.ts  → onde o balão fica e como o traço o alcança (puro)
       components/            → peças visuais (React Native + Skia)
         WorldMap.tsx         → mapa em tela cheia (Skia), gestos de câmera, toque longo
         WorldSprites.tsx     → desenha os sprites (PNG ou fallback) sobre o terreno
         ActionToast.tsx      → aviso que some sozinho (posição topo/baixo e duração por props)
+        GrowthBanner.tsx     → anuncia o que nasceu (título + subtítulo, some sozinho)
+        BuildingCallout.tsx  → etiqueta ligada a uma construção (ponto + traço + painel)
         WorldDevTools.tsx    → (dev) semente, nível do mar e botões de crescimento
         BiomeLegend.tsx      → (dev) legenda das cores do mapa
       hooks/
         useWorld.ts          → estado do mundo; aplicarEventos() é a porta do crescimento
-        useMapCamera.ts      → câmera: arrastar, pinça, inércia, limites, tela→mapa
+        useMapCamera.ts      → câmera: gestos, limites, tela↔mapa, focarEm, aviso de movimento
         useSpriteImages.ts   → carrega os PNGs dos sprites (useImage, ordem fixa)
     learning/                → aprendizagem: curiosidades e perfil de conhecimento
       engine/                → lógica pura (sem React, React Native ou Skia)
@@ -56,27 +61,39 @@ src/
       components/            → interface do Aprender (React Native, sem Skia)
         LearningOverlay.tsx  → o aparelho: cresce do botão e abre o feed sobre o mapa
         LearningScreen.tsx   → a tela: feed + leitura; avisa onAprendido ao registrar
-        CuriosityCard.tsx    → card do feed: pôster vertical com capa, degradê e título
+        DiscoveryFeed.tsx    → FlatList com snap: uma descoberta por viewport
+        DiscoveryPost.tsx    → o post: fotografia em tela cheia, título e "Ler →"
         CuriosityReader.tsx  → leitura em tela cheia: conteúdo, fontes, botão APRENDI
       presentation/          → decisões de aparência que o engine não pode conhecer
         coverTheme.ts        → capa provisória por tema (cor + símbolo)
+        descoberta.ts        → o que ainda falta descobrir (o filtro do feed)
+        feedLayout.ts        → a conta do feed: viewport, recuos e paradas do snap
+        worldPulse.ts        → a regra do World Pulse e o item que ele mostra
       hooks/
         useLearning.ts       → perfil da sessão; delega a decisão ao engine
+    achievements/            → conquistas da jornada (não importa world nem learning)
+      engine/regras.ts       → o que desbloqueia cada conquista (pura)
+      engine/estado.ts       → desbloqueadas (salvo) + fila do banner (sessão) (pura)
+      data/achievements.ts   → CATÁLOGO: título, frase e arte de cada conquista
+      hooks/useAchievements.ts → guarda o estado; cada ação é uma função pura
+      components/AchievementToast.tsx → banner global que desce do topo
     onboarding/              → boas-vindas de uma jornada nova
       regra.ts               → quando a apresentação aparece (pura)
       components/JourneyIntro.tsx → o cartão por cima do mundo
     settings/                → configurações do app
       components/
         SettingsMenu.tsx     → janela "Configurações" (+ seção Desenvolvedor)
+        PaletteDevTools.tsx  → (dev, temporário) seletor de paletas da interface
       hooks/
         useDevMode.ts        → modo desenvolvedor: 5 toques secretos liga/desliga
   persistence/               → o save (camada de composição, como app/)
-    save.ts                  → SaveV2 (+ migração da V1), conferência e decidirSave
+    save.ts                  → SaveV3 (+ migrações V1→V2→V3), conferência e decidirSave
     storage.ts               → AsyncStorage: ler, gravar em fila, apagar
   shared/                    → o que qualquer funcionalidade pode usar
     domain/themeKey.ts       → ThemeKey: temas em comum entre learning e world (tipo puro)
     domain/influence.ts      → InfluenceKey, KnowledgeInfluence: contrato learning → world
-    theme/colors.ts          → cores da interface (claro/escuro)
+    theme/paletas.ts         → as paletas em teste (dados puros, sem React)
+    theme/colors.ts          → useColors(): tokens da paleta ativa + store dev
     ui/Button.tsx            → botão reutilizável
     ui/ActionBar.tsx         → barra de ações: cápsula central embaixo (só ícones)
     ui/Window.tsx            → janela base: fundo escurecido, fade, título, conteúdo, rodapé
@@ -152,7 +169,9 @@ toque no botão → componente chama função recebida por props
 | Adicionar/remover um tema               | `shared/domain/themeKey.ts` + `learning/engine/themes.ts` |
 | Adicionar um tipo de influência         | `shared/domain/influence.ts` + destino em `world/engine/growth.ts` |
 | Mudar o que aprender dá ao perfil       | `learning/engine/profile.ts`          |
-| Mudar o formato do save                 | `persistence/save.ts` (`SaveV2`, `VERSAO_DO_SAVE`, `migrarParaAtual`) |
+| Mudar o formato do save                 | `persistence/save.ts` (`SaveV3`, `VERSAO_DO_SAVE`, `migrarParaAtual`) |
+| Criar uma conquista nova                | `achievements/engine/regras.ts` (regra) + `achievements/data/achievements.ts` (texto e arte) |
+| Mudar o banner de conquista             | `achievements/components/AchievementToast.tsx` |
 | Mexer na gravação/chave do save         | `persistence/storage.ts` (`@eon/save`) |
 | Mexer na aleatoriedade do crescimento   | `world/engine/growthElements.ts` (`rngDeCrescimento`) |
 | Mexer na ponte aprender → mundo         | `app/index.tsx` (`aoAprender`)        |
@@ -161,11 +180,13 @@ toque no botão → componente chama função recebida por props
 | Mudar o formato/tamanho da barra        | `shared/ui/ActionBar.tsx`             |
 | Mudar a animação de abrir o feed        | `learning/components/LearningOverlay.tsx` |
 | Acrescentar/editar uma curiosidade      | `learning/data/curiosities.ts` (só isso) |
-| Mudar o card do feed                    | `learning/components/CuriosityCard.tsx` |
+| Mudar o post do feed                    | `learning/components/DiscoveryPost.tsx` |
+| Mudar o snap/altura dos posts           | `learning/presentation/feedLayout.ts` |
+| Mudar o que entra no feed               | `learning/presentation/descoberta.ts` |
 | Colocar a capa de uma curiosidade       | `assets/curiosities/` + campo `capa` no catálogo |
 | Mudar a capa provisória de um tema      | `learning/presentation/coverTheme.ts` |
-| Mudar a força do degradê do card        | `learning/components/CuriosityCard.tsx` (`DEGRADE`) |
-| Mudar o formato do pôster               | `learning/components/CuriosityCard.tsx` (`PROPORCAO`, `RAIO`) |
+| Mudar a força do degradê do post        | `learning/components/DiscoveryPost.tsx` (`DEGRADE`) |
+| Mudar o chip do tema no post            | `learning/components/DiscoveryPost.tsx` (`chip`) |
 | Mudar a tela de leitura / o botão APRENDI | `learning/components/CuriosityReader.tsx` |
 | Mudar o nome de um tema na interface    | `learning/engine/themes.ts` (`NOMES_DE_TEMA`) |
 | Mudar que evento cada influência gera   | `world/engine/growth.ts` (`EVENTO_POR_INFLUENCIA`) |
@@ -206,17 +227,24 @@ Curiosity ─registrarAprendizado─▶ LearningResult.influencias ─gerarEvent
 
 ```
 useLearning (perfil da sessão)
-   └─ LearningScreen ── feed: CuriosityCard[] (pôster vertical: capa + título)
-                     └─ leitura: CuriosityReader (tela cheia, por cima do feed)
+   └─ LearningScreen
+      ├─ DiscoveryFeed (FlatList com snap vertical)
+      │    ├─ cabeçalho ── TopBar      ("Éon" + ⚙︎, uma linha)
+      │    │             └─ WorldPulse (UM item por entrada)
+      │    └─ DiscoveryPost[] (uma viewport cada: imagem + título + Ler →)
+      └─ leitura: CuriosityReader (tela cheia, por cima de tudo)
 ```
+
+**As quatro áreas do app têm papéis diferentes:** o **World Pulse** conta *o que
+aconteceu no meu mundo*; o **Discovery Feed**, *o que eu ainda posso descobrir*;
+as **Aprendidas** (tela futura), *o que já faz parte da minha jornada*; e o
+**Mundo**, *o que meu conhecimento construiu*.
 
 - **`useLearning`** guarda o `KnowledgeProfile` da sessão em memória. Ele não
   decide nada: chama `registrarAprendizado` e guarda o perfil devolvido. Em
   `'repetida'` o perfil é o mesmo objeto, então nada muda na tela.
 - **`LearningScreen`** é o conteúdo do aparelho. Qual curiosidade está aberta é
-  estado dele; ele avisa quem o contém por `onLeitura(lendo)`, e o
-  `LearningOverlay` usa isso para esconder o ✕ enquanto a leitura — que tem o
-  próprio "voltar" — está aberta.
+  estado dele — de tela, nunca do save.
 - **`CuriosityReader`** mostra tema, título, conteúdo, **fontes** (com
   `Linking.openURL` quando têm `url`) e o botão **APRENDI**. Depois do toque
   aparece "✓ Conhecimento adquirido." — o texto **não fala do mundo**, porque a
@@ -227,22 +255,241 @@ useLearning (perfil da sessão)
   `learning` **não importa** `world` (e vice-versa). O que os dois compartilham
   mora em `shared/domain`.
 
-### O card do feed (CuriosityCard)
+### O topo do feed (World Pulse)
 
-Cada curiosidade é uma **capa**, não uma linha de lista. A hierarquia é
-imagem → título → CTA → tema → selo de aprendida.
+**Nada no topo é fixo.** `LearningHeader` é o primeiro filho do `ScrollView`:
+rolar para baixo sobe o "Éon", sobe o World Pulse e deixa os cards passando.
+Não existe barra sticky nesta tela.
+
+**A linha do nome (`TopBar`) são três colunas.** Espaçador invisível de 44 px,
+título com `flex: 1` e `textAlign: 'center'`, engrenagem de 44 px. As duas pontas
+com a mesma largura são o que deixa o "Éon" no centro da **tela**, e não no
+centro do que sobrou. A engrenagem é **ícone nu** — sem círculo, sem borda, sem
+fundo. (Antes isto era `justifyContent: 'center'` mais um filho `position:
+absolute`; o filho absoluto não ocupa espaço no fluxo e o resultado quebrava em
+duas linhas.)
+
+#### A vitrine viva da jornada
+
+**World Pulse é a vitrine viva do estado da jornada.** Ele prioriza conquistas
+novas, depois notícias reais de progressão, e usa notícias ambientais como
+fallback — por isso nunca fica vazio. Futuramente pode exibir descobertas que
+levam a eventos no mapa.
+
+É **vitrine**, não arquivo: mostra um item por entrada. Histórico completo de
+notícias e coleção de conquistas serão telas próprias; o Pulse não tenta ser
+nenhuma delas. Também **não é filtro**: os chips de tema saíram daqui, e com eles
+o `temaFiltrado` (o único controle dele morava no Pulse; recolocá-lo em outro
+lugar é tarefa futura).
 
 ```
-┌──────────────┐  aspectRatio 3/4, raio 24, overflow: hidden
-│ TEMA   ✓ Apr │  ← linha de cima, absoluta
+Conquista nova
+      ↓ não
+Notícia real recente
+      ↓ não
+Notícia ambiental
+```
+
+`escolherWorldPulse(...)` em `learning/presentation/worldPulse.ts` é a regra num
+lugar só, pura e testável. Devolve um `WorldPulseItem`, união discriminada:
+
+```
+noticia/progressao  → o que o conhecimento acabou de construir (com "agora"/"há pouco"/"hoje")
+noticia/ambiental   → o dia comum do mundo (sem hora: não há hora real para inventar)
+conquista           → NOVA CONQUISTA: nome + o que foi
+descoberta          → reservada: tem tipo e estilo, falta só quem a produza
+```
+
+**Sem tempo e sem sorteio.** Nenhum timer alterna o card e não há `Math.random`:
+os mesmos candidatos dão sempre o mesmo item.
+
+**Escolhido UMA vez, na entrada.** A composição decide quando o aparelho abre
+(`aprenderAberto` false→true) e o item fica **congelado** até a próxima entrada:
+não troca no meio do scroll, e dá para marcar como visto na hora sem ele se
+recalcular. Conquista e notícia real andam **uma por entrada** — a vitrine só tem
+lugar para uma, e marcar o lote todo como visto engoliria as outras sem mostrá-las.
+
+#### Notícia ambiental: só fala do que existe
+
+`world/engine/pulsoAmbiental.ts` lê só o `WorldSnapshot` (o que a composição já
+tem em `world.estadoPersistivel`). Cada assunto tem um **portão**: fonte só com
+fonte, estrada só com caminhos, céu só com observatório, vila só com casa — e
+"paisagem intocada" **só enquanto nada foi construído**. Um mundo novo nasce sem
+civilização, então é a paisagem que responde por ele.
+
+O portão é o que impede a frase falsa; o vocabulário completa: o jogo não tem
+população, família, economia nem política, e nenhum modelo fala disso (nem diz
+"nova" — novidade de verdade é notícia de progressão). Os testes checam as duas
+coisas.
+
+**Não repete:** as frases elegíveis são intercaladas por assunto (céu, mina,
+fonte, céu…) e o índice é `semente do mundo + dia + vez`. Entradas seguidas mudam
+de assunto, a frase anterior nunca sai em seguida, e a primeira do dia muda de um
+dia para o outro. A memória disso é um contador de sessão (ref), não save.
+
+#### O card
+
+Um só componente (`header/WorldPulse.tsx`), com a identidade de cada tipo numa
+tabela — não em `if`:
+
+- **faixa de 3 px** no topo na cor do tipo: verde (mundo vivo agora), ouro
+  (marco), violeta (descoberta). A ambiental não tem acento: é o dia comum, e a
+  hierarquia precisa mostrar que vale menos que uma novidade real;
+- **linha de status**: ponto que respira devagar (1,4 s, nunca some) só na
+  notícia real; ponto parado na ambiental; `✦` na conquista; `!` na descoberta;
+- **manchete** forte de uma linha; se não couber, desliza devagar com pausa longa
+  (medida com `flexShrink: 0`, senão o texto encolhe e nunca desliza). Conquista
+  usa nome + duas linhas, parada;
+- **canto de 32 px** à direita com o glifo do assunto (`ICONS_DO_PULSO`) — é o
+  lugar do sprite pixel art futuro;
+- **sombra curta** (0.08, raio 8) num embrulho sem `overflow`, porque o iOS
+  corta a sombra de quem tem `overflow: hidden`. Raio 14, menos bolha que os
+  pôsteres. Fica entre ~76 e ~100 px de altura.
+
+O assunto (`AssuntoDoMundo`) mora em `shared/domain`: o mundo o escreve, o feed
+desenha o ícone, e nenhum dos dois importa o outro.
+
+#### O que é "novo" no Pulse
+
+As conquistas **desbloqueadas** vêm da feature `achievements` e são salvas (veja
+"Conquistas"). O que é de sessão é só o **"ainda não mostrada no Pulse"**: as
+vistas nascem com tudo o que já estava desbloqueado na hidratação, igual às
+notícias, que começam a contar do tamanho do crescimento salvo. Reabrir o app não
+ressuscita marcos nem notícias antigas.
+
+O banner anuncia a conquista **no instante** em que ela acontece; o Pulse a mostra
+na próxima entrada no feed, como vitrine. São dois momentos, não um aviso repetido.
+
+`learning` não importa `achievements`: a vitrine recebe `ConquistaDoPulso` (id,
+nome, frase) já em texto, montada pela composição a partir do catálogo.
+
+**Recomeçar jornada limpa tudo junto:** a lista de construções encolhe → as
+notícias são apagadas; as conquistas zeram → as vistas são podadas para o que
+ainda existe. Nada de notícia fantasma de civilização apagada, e reconquistar um
+marco volta a avisar.
+
+#### Notícias são efêmeras
+
+`world/engine/destaque.ts` expõe `fraseDeCrescimento(elemento)` — a **mesma**
+frase que o banner do mundo usa, sozinha, para o feed não precisar de um segundo
+catálogo de textos.
+
+O resto é da composição (`app/index.tsx`): um `useRef` guarda quantas construções
+já viraram notícia e um efeito traduz só as que nasceram depois. Nada disso entra
+no save, de propósito — **o que aconteceu já está lá** (nas construções); o que é
+passageiro é o *"isto acabou de acontecer"*.
+
+**Crescimento do modo dev não vira notícia.** O filtro é estrutural, não uma
+flag: só elementos com `origemConhecimentoId` entram na fila, e
+`aplicarCrescimentoDev` chama `aplicarEventos` **sem origem**. Notícia é o que o
+conhecimento causou — cem casas criadas em teste não entopem a fila de quem está
+jogando.
+
+A fila é **cronológica**: a mais antiga não vista é a próxima a ser contada, uma
+por entrada. Vista uma vez, nunca mais toma a vez de ninguém, mas continua na
+lista (limite de 6).
+
+**A fronteira continua de pé.** `learning` **não importa** `world`: o formato que
+a tela conhece é `NoticiaDoMundo { id, texto, assunto, criadoEm, vista }`,
+declarado em `learning/presentation/worldPulse.ts`. Para o feed, notícia é texto,
+assunto e hora; quem sabe que aquilo veio de um `GrowthElement` é a composição.
+
+### O Discovery Feed
+
+**O feed principal mostra somente curiosidades ainda não aprendidas.**
+Curiosidades aprendidas deixam esse fluxo e pertencem à coleção de conhecimento
+do usuário, que terá interface própria de consulta/releitura. **Cada post ocupa
+aproximadamente uma viewport e o feed usa snap vertical para apresentar uma
+descoberta por vez.**
+
+O filtro é `paraDescobrir(curiosidades, perfil)` — **derivado, nunca guardado**.
+A fonte de verdade é o `KnowledgeProfile`, que já é persistido, então duas
+propriedades saem de graça: fechar e abrir o app mantém o que foi aprendido fora
+do feed, e **recomeçar a jornada devolve tudo**, porque o perfil volta vazio.
+Não existe segunda lista de "escondidas" para sair de sincronia. A função é
+genérica sobre `{ id }`: a tela de Aprendidas é o complemento dela, sobre o mesmo
+catálogo.
+
+**O feed congela enquanto a leitura está aberta.** Tocar APRENDI muda o perfil na
+hora; sem o congelamento, a lista se reconstruiria sob o leitor e, ao fechar, o
+feed apareceria em outra posição. A sincronização acontece quando a leitura fecha
+— e o leitor procura no **catálogo inteiro**, não no feed, então a curiosidade
+recém-aprendida continua legível até quem está lendo decidir sair.
+
+```
+┌──────────────┐  altura = a JANELA INTEIRA (sem margem, sem raio)
+│ [ GEOLOGIA ] │  ← chip na cor do próprio tema, abaixo da status bar
 │              │
-│  imagem      │  ← expo-image, contentFit: 'cover', em fill absoluto
-│ ░░░░░░░░░░░░ │  ← Gradient: transparente até 38%, quase preto na base
-│ Título grande│
+│  fotografia  │  ← expo-image, 'cover', fill absoluto, de borda a borda
+│ ░░░░░░░░░░░░ │  ← Gradient progressivo: nada no alto, firme só na base
+│ Título 33/39 │
 │ preview (2)  │
-│ ( ler… )     │
+│ Ler →        │  ← só texto, acima da ActionBar
 └──────────────┘
 ```
+
+A conta toda vive em `presentation/feedLayout.ts`, **pura e testada** —
+`medidasDoFeed`, `posicaoDoPost`, `paradasDoFeed`.
+
+- **Full-bleed:** o post é a tela. Altura = `janela.height` inteira; a fotografia
+  passa **por baixo** da status bar e da ActionBar de propósito. Só o texto
+  respeita as bordas, por dois recuos: `recuoTopo` (safe top) e `recuoBase`
+  (safe bottom + `ESPACO_ACTION_BAR`) — título, preview e CTA nunca ficam
+  escondidos atrás da barra flutuante.
+- **Nenhum padding no conteúdo da lista.** A safe area do topo mora dentro do
+  cabeçalho e embaixo não há padding: é isso que faz o fim da rolagem coincidir
+  **exatamente** com a última parada do snap (há teste para essa invariante). Um
+  `paddingBottom` aqui empurraria tudo e o último post nunca encaixaria.
+- **Snap por offsets, não por intervalo.** O cabeçalho (Éon + World Pulse) tem
+  altura própria, medida no `onLayout`, que desalinharia um `snapToInterval` a
+  partir do segundo post. A parada `0` é de propósito: é a abertura da sessão.
+  `decelerationRate="fast"` + `disableIntervalMomentum` encaixam sem prender e
+  sem pular dois de uma vez.
+- **Virtualizado** porque o catálogo vai crescer e cada item é uma fotografia de
+  tela cheia: `FlatList` com `getItemLayout` (altura conhecida, sem medição nem
+  salto), `windowSize` 3 e 2 por lote. O post é `memo` e o `renderItem` é
+  estável, senão rolar re-renderiza os vizinhos sem mudança de conteúdo. A
+  `recyclingKey` do `expo-image` evita a imagem antiga aparecer numa view
+  reaproveitada. Sem `removeClippedSubviews`: em iOS ele já causou sumiço de
+  conteúdo em listas com imagem.
+- **A sequência não tem cortes secos.** Cada post leva **dois** degradês: um no
+  alto (14% da viewport) e o de sempre na base — os dois em
+  `presentation/degradeDoPost.ts`. O do alto também garante contraste ao chip do
+  tema sobre qualquer fotografia.
+- **O segredo da emenda é o casamento, não o degradê.** Ter sombra dos dois
+  lados não basta: com a base terminando em 0.93 e o topo começando em 0.45, o
+  olho via a divisão **clarear** — um degrau. Por isso os dois saem da mesma
+  constante, `ALFA_NA_EMENDA`, e chegam na divisão com exatamente o mesmo
+  escuro. Há teste para essa invariante, que é fácil de perder de vista ao
+  mexer nos valores.
+- **Do World Pulse para a primeira foto o fade é da PALETA, não preto.** O
+  primeiro post troca o degradê escuro do alto por uma ponte de 108 px que
+  dissolve `fundoFeed` na fotografia (`comAlfa`, em `shared/theme/cor.ts`) — a
+  imagem já está lá embaixo, então a foto parece nascer de dentro da interface.
+  Os dois overlays do alto são exclusivos: um **ou** o outro, nunca somados, para
+  o primeiro post não escurecer duas vezes. Com paleta clara a ponte é clara;
+  com escura, escura — há teste percorrendo as seis.
+- **Nada disso mexe no snap.** Todos os overlays são `position: absolute` dentro
+  do post, que já tem altura fixa: zero altura nova, zero spacer. O cabeçalho
+  perdeu o `paddingBottom` para a foto encostar no Pulse — e **não** há overlap
+  negativo de propósito: `onLayout` mede a altura sem a margem, então um
+  `marginBottom: -16` deslocaria os posts sem mudar `alturaCabecalho` e o snap
+  erraria por exatamente esse tanto.
+- **O chip do tema usa a cor do próprio tema** (`CAPA_DO_TEMA`), não um token da
+  interface: trocar a paleta no laboratório **não** repinta os chips, porque
+  identidade de conteúdo não é identidade de interface. O `gap` interno já é o
+  lugar do sprite pixel art futuro.
+- **`Ler →` não tem fundo, borda nem cápsula** — texto branco sobre o degradê. O
+  post **inteiro** continua sendo o botão (como sempre foi), então a área de
+  toque é a tela toda e existe um nó de acessibilidade só, em vez de dois botões
+  aninhados dizendo a mesma coisa. Pressionar esmaece o CTA.
+- **Sem selo de aprendida** no post: no Discovery Feed todo post é ainda não
+  aprendido, então o selo não teria o que dizer. Quem mostra esse estado é o
+  `CuriosityReader` (**APRENDIDA**, desabilitado), que a tela de Aprendidas
+  reaproveita — e a proteção `'repetida'` do engine continua de pé para quando
+  ela reabrir uma curiosidade já aprendida.
+- **Feed vazio** tem estado próprio ("Você descobriu tudo por enquanto."), com a
+  altura de um post. Nada é inventado para preencher.
 
 - **A capa vive no próprio bloco da curiosidade**, no campo `capa`. O tipo puro
   `Curiosity` continua sem imagem: quem carrega a capa é `CuriosityEntry`, do
@@ -269,7 +516,7 @@ bolso.
 
 ```
 AppScreen
-├── camada do mundo   (fluxo normal: WorldMap + engrenagem + menu + celular + avisos)
+├── camada do mundo   (fluxo normal: WorldMap + barra de ações + avisos)
 └── LearningOverlay   (absoluteFill por cima; fechado, é invisível e intocável)
 ```
 
@@ -287,8 +534,8 @@ AppScreen
   `centroDoItem()` devolve esse ponto para a animação (a barra é quem sabe o
   próprio layout). O item ativo (`ativo`) mostra onde o jogador está: mundo ou
   aparelho. Os ícones são provisórios (`shared/ui/icons.ts`).
-- **As configurações só abrem de dentro do aparelho**, pelo ⚙︎ no canto superior
-  direito do painel (`onConfiguracoes`). O mapa não tem botão para elas. O
+- **As configurações só abrem de dentro do aparelho**, pelo ⚙︎ da linha do topo
+  do feed (`onConfiguracoes`). O mapa não tem botão para elas. O
   `SettingsMenu` é renderizado depois do `LearningOverlay` para a janela ficar
   por cima do painel.
 - **As janelas são controladas pela composição.** `SettingsMenu` e `LearnMenu`
@@ -328,8 +575,8 @@ AppScreen
 ## O que é salvo e o que é recalculado
 
 O jogo é gravado no aparelho com **AsyncStorage**, na chave `@eon/save`, no
-formato `SaveV2` (`src/persistence/save.ts`). Saves `SaveV1` antigos continuam
-sendo lidos e migrados.
+formato `SaveV3` (`src/persistence/save.ts`). Saves `SaveV1` e `SaveV2` antigos
+continuam sendo lidos e migrados.
 
 ```
 abrir o app
@@ -346,11 +593,12 @@ desenharia o terreno e depois o jogaria fora — com piscada e trabalho perdido.
 Como o autosave vive dentro de `Jogo`, **ele não tem como rodar antes da
 hidratação**.
 
-**Autosave:** um `useMemo` monta o `SaveV2` a partir de
-`world.estadoPersistivel`, `aprendizado.perfil` e `onboardingConcluida`, e um efeito grava quando essa
-referência muda. Ou seja, grava quando muda semente, nível do mar, crescimento,
-vilas, `growthSequence` ou perfil — e **não** grava por abrir o aparelho, animar,
-dar zoom, mostrar aviso ou alternar telas.
+**Autosave:** um `useMemo` monta o `SaveV3` a partir de
+`world.estadoPersistivel`, `aprendizado.perfil`, `onboardingConcluida` e das
+conquistas desbloqueadas, e um efeito grava quando essa referência muda. Ou seja,
+grava quando muda semente, nível do mar, crescimento, vilas, `growthSequence`,
+perfil ou conquistas — e **não** grava por abrir o aparelho, animar, dar zoom,
+mostrar aviso (inclusive o banner de conquista) ou alternar telas.
 
 **O último save seguro.** `decidirSave` responde duas coisas de uma vez: qual é
 o último estado **coerente** e se dá para gravar agora. Enquanto
@@ -406,6 +654,143 @@ rngDeCrescimento(mundo.seed, growthSequence)  →  mulberry32(combinarSementes(�
 - O único sorteio que sobrou no mundo é `Math.random()` em `sementeAleatoria()`,
   e só na **criação**: a semente sorteada é guardada e tudo mais sai dela.
 
+## Ver o que a curiosidade causou
+
+Aprender constrói alguma coisa; o jogador precisa **ver** isso. Ao voltar ao
+mundo, a câmera vai até a novidade e um aviso curto diz o que nasceu.
+
+```
+APRENDI → mundo cresce → (aparelho ainda aberto)
+        → jogador volta ao mundo
+        → câmera anima até a novidade + aviso por alguns segundos
+```
+
+- **Quem escolhe é o engine.** `engine/destaque.ts` recebe `r.adicionados` e
+  devolve a novidade mais importante, por prioridade fixa: observatório, mina,
+  fonte, casa maior, casa, e depois qualquer outra coisa. Com várias, anuncia a
+  escolhida — uma frase que se entende vale mais que uma contagem.
+- **O texto fala do mundo**, nunca do sistema: "Uma nova casa surgiu em sua
+  vila.", não "1 GrowthElement adicionado".
+- **`destaque` é estado de sessão** em `useWorld`: fica ao lado do mundo, **não
+  entra no save** e é consumido (`consumirDestaque`) assim que a composição o
+  mostra. Por isso acontece **uma vez por aprendizado**, nunca em laço.
+- **Curiosidade repetida não dispara nada** — nem chega ao mundo: `aoAprender`
+  volta cedo em `'repetida'`. E se um evento não achar lugar, `adicionados` vem
+  vazio e não há destaque.
+- **Espera o mapa estar à vista.** Com o aparelho aberto o mundo está coberto, e
+  durante uma recriação ele nem está montado; o efeito só age com
+  `!aprenderAberto && !world.gerando`.
+- **A câmera anima** (`focarEm`, em `useMapCamera`): aproxima até 3× o zoom
+  mínimo e centraliza o tile em ~650 ms, respeitando os limites do mapa no zoom
+  de destino. Cancela a inércia em curso; o gesto do jogador continua livre
+  depois.
+- **O aviso some sozinho pela própria animação** (`GrowthBanner`), no mesmo
+  padrão do `ActionToast`: `withSequence`/`withDelay` do Reanimated, sem
+  `setTimeout` — não há timer para limpar. Ele não recebe toque, então não
+  atrapalha a navegação.
+
+## Tocar numa construção e lembrar de onde ela veio
+
+A mecânica 1 é recompensa imediata; esta é memória. Tocar numa casa mostra uma
+etiqueta pequena ligada a ela por um traço — nada de modal, o mundo continua
+sendo o protagonista.
+
+```
+construção ─── Casa da vila
+               Surgiu quando você aprendeu:
+               A cidade perdida que ficou escondida por séculos
+```
+
+### A origem viaja com a construção
+
+`GrowthElement.origemConhecimentoId?: string` é um identificador **opaco** para
+o mundo: ele guarda, não interpreta. Quem traduz id em título é a composição,
+que conhece as duas features — `world` continua sem importar nada de `learning`.
+
+O carimbo é feito **dentro** do engine (`aplicarEventosDeCrescimento` recebe a
+origem e repassa a `criarElementoDeCrescimento`), então **tudo que nasce numa
+execução recebe o mesmo id**, inclusive a fonte que aparece sozinha quando a
+vila amadurece. Carimbar depois, por fora, obrigaria a remontar a lista e teria
+como divergir.
+
+- **Modo dev não inventa curiosidade:** cresce sem origem, o campo fica ausente,
+  e a construção continua tocável com texto genérico.
+- **Sem SaveV3:** o campo é opcional e aditivo, e a conferência do save não
+  inspeciona o interior dos `GrowthElement`. Construções de saves antigos
+  simplesmente não têm origem e mostram "Construção da sua jornada" — não se
+  inventa qual curiosidade as criou.
+- **A origem é persistente; a seleção não.** Reabrir o app não deixa nada
+  selecionado, mas tocar na mesma casa mostra a mesma curiosidade.
+
+### Como o toque encontra a construção
+
+`engine/selecao.ts` é puro e trabalha em tiles. Para casa, casa maior e fonte
+reaproveita os retângulos do `FOOTPRINT` (batem com a arte); mina e observatório
+não têm footprint, então têm uma **área tocável própria**, medida pelo desenho
+(`mina.png` 17×9 px, observatório 9×8 px em caracteres). Mais ~1 tile de folga
+para o dedo.
+
+**Isso é hitbox visual, não regra de colisão**: mexer aqui não muda onde as
+construções cabem. Só civilização é inspecionável — árvore, pedra, arbusto,
+caminho e chão devolvem `null`.
+
+Com duas candidatas sobrepostas vence a de **maior `y`**, que é a desenhada por
+cima — a mesma ordem que o render usa.
+
+### A etiqueta
+
+O ponto da tela é calculado **uma vez, no toque** (`paraTela`, lendo a câmera
+daquele instante) — nada de sincronizar uma View com shared values a cada
+quadro. Por isso **começar a arrastar ou pinçar fecha a etiqueta**: o gesto
+avisa a composição no `onBegin`/`onStart` (só o aviso cruza para o JS; o gesto
+continua na thread de UI).
+
+**A geometria é derivada, não tabelada** (`render/calloutGeometria.ts`, pura):
+
+```
+construção → âncora (centro da bolinha)
+           → balão medido no onLayout (largura e altura reais)
+           → lado escolhido pelo espaço livre
+           → entrada SEMPRE numa lateral do balão
+           → cotovelo ortogonal resolve o desnível
+```
+
+Não existe offset feito para um caso. A bolinha, o início da linha e a conta do
+balão saem **todos da mesma âncora** — antes a linha vinha do fluxo de layout
+(uma row centrada), então ela e a bolinha se desencontravam assim que o clamp
+agia ou a altura do card mudava.
+
+- **A linha nunca entra por cima nem por baixo.** O ponto de entrada é a lateral
+  oposta ao lado escolhido: balão à direita entra pela borda esquerda, e
+  vice-versa. Subir ou descer para caber na tela **não muda o lado** — antes
+  mudava, porque a conta buscava a face mais próxima, e o desnível fazia vencer
+  o topo ou a base (aquele "fio" vertical).
+- **Reta quando dá, cotovelo quando precisa.** Com o desnível dentro de 3 px é
+  um segmento horizontal só; passando disso são três, ortogonais
+  (horizontal → vertical → horizontal). A dobra fica perto do meio, com um
+  mínimo de cada lado para não sobrar um trecho de 2 px grudado num vertical
+  enorme.
+- **Lado pelo espaço real**, comparado com a largura medida: cabendo dos dois,
+  fica no mais folgado. Num telefone estreito, uma construção no meio da tela
+  não deixa o balão caber em lado nenhum — aí ele desce (ou sobe) para não
+  cobrir a bolinha, **e mesmo assim a conexão continua lateral**: quem liga os
+  dois é o cotovelo.
+- **A entrada fica na parte reta da lateral:** o `y` é a âncora presa com 14 px
+  de folga nas pontas, porque o card tem raio 12 e a linha não pode chegar no
+  canto arredondado.
+- **Sem piscada:** a altura só existe depois do `onLayout`, então o primeiro
+  quadro desenha só o balão invisível, para medir; a cena completa entra com
+  fade depois.
+- Cada trecho é uma `View` absoluta, com 2 px de folga nas pontas para entrar
+  sob a bolinha e sob a borda. Nenhuma biblioteca nova, nenhuma rotação. O
+  conjunto tem `pointerEvents="none"`, então tocar noutra construção troca a
+  seleção e tocar no chão fecha, sem botão.
+
+**Tap e long press convivem:** `Gesture.Exclusive(toqueLongo, toque)` dá
+prioridade ao long press (inspeção técnica do modo dev); o tap só dispara se ele
+falhar. Abrir Aprender, abrir Configurações, recriar o mundo ou um novo destaque
+fecham a seleção.
+
 ## A apresentação da jornada
 
 Uma jornada nova é apresentada uma vez, por cima do mundo já carregado — o mapa
@@ -442,14 +827,93 @@ jornada durante um reset.
 ```
 SaveV1 → { version: 1, world, learning }
 SaveV2 → { version: 2, world, learning, onboardingConcluida }
+SaveV3 → { version: 3, world, learning, onboardingConcluida, achievements }
 ```
 
-`carregarSave` passa tudo por `migrarParaAtual`: V2 vem direto, V1 é convertida
-por `migrarV1`, e qualquer outra versão vira "sem save". A regra da migração é
+`carregarSave` passa tudo por `migrarParaAtual`: V3 vem direto, V2 é convertida
+por `migrarV2`, V1 passa pelas duas (`migrarV2(migrarV1(…))`), e qualquer outra
+versão vira "sem save". A regra da migração V1 → V2 é
 `onboardingConcluida = perfil.aprendidas.length > 0` — quem já aprendeu alguma
 coisa já começou a jornada e não deve ver a apresentação; save antigo com perfil
 vazio volta a vê-la, que é o certo para quem ainda não começou. **Saves antigos
 não são apagados**: são lidos e convertidos.
+
+## Conquistas (features/achievements)
+
+A primeira conquista é **Primeira casa!** (`first-house`): desbloqueia na primeira
+vez que uma casa nasce na jornada, anuncia com um banner global e fica salva.
+
+```
+engine de crescimento → r.adicionados
+  → useWorld.nascimento           (acumula até ser consumido, como o destaque)
+  → composição: assuntoDeCrescimento()   construção → 'casa' (shared/domain)
+  → useAchievements.registrarNascimentos()
+       ├─ desbloqueadas += first-house   → vai para o save (SaveV3)
+       └─ fila += anúncio                → só na sessão
+  → AchievementToast                (desce, espera, sobe, avisa o fim)
+```
+
+- **O ponto de verdade é o engine.** A detecção lê o `r.adicionados` do
+  `aplicarEventosDeCrescimento` — o que de fato nasceu —, nunca uma leitura do
+  mapa. `useWorld` expõe isso como `nascimento` + `consumirNascimento`, o mesmo
+  contrato de `destaque`/`consumirDestaque`. Acumular até consumir é o que impede
+  duas levas de crescimento no mesmo render de perderem um nascimento.
+- **`achievements` não importa `world`.** A composição traduz cada construção em
+  `AssuntoDoMundo` (vocabulário de `shared/domain`, o mesmo das notícias); a
+  regra fala de "casa" sem saber de sprite, tile ou vila. Casa maior também é
+  casa.
+- **"Uma vez por jornada" não é flag, é regra:** `conquistasAlcancadas` nunca
+  devolve o que já está desbloqueado. A segunda casa não faz nada — nem estado
+  novo, nem render, nem regravação (a função devolve o mesmo objeto).
+- **Vale para qualquer origem**, modo dev inclusive: a conquista é "a primeira casa
+  da jornada", não "a primeira casa vinda de uma curiosidade". (Notícias fazem o
+  contrário, de propósito: lá o crescimento de teste não pode entupir a fila.)
+
+**Duas metades, dois destinos** — é o que impede o banner de reabrir sozinho:
+
+- `desbloqueadas` é **da jornada**: vai para o save e volta na hidratação;
+- a `fila` do banner é **da sessão**: nunca é gravada. O app abre sempre com a
+  fila vazia, então nenhuma conquista antiga se anuncia de novo.
+
+Registrar desbloqueia **e** enfileira no mesmo passo: não existe conquista
+anunciada que não esteja salva, nem salva que não tenha sido anunciada quando
+aconteceu.
+
+**Reset pelo sinal `world.gerando`.** A composição zera as conquistas quando o
+mundo começa a ser recriado — cobre Recomeçar jornada e qualquer recriação por um
+caminho só. E herda a garantia do autosave: durante a recriação o save seguro não
+avança, então o disco nunca guarda mundo vazio com conquista antiga (nem o
+contrário).
+
+**Migração V2 → V3.** Save antigo que já tem casa chega com `first-house`
+desbloqueada — deduzida do crescimento salvo — e **sem banner**: ela aconteceu
+antes desta versão existir, e anunciá-la ao abrir seria mentir o momento.
+
+### O banner
+
+- **Global de verdade:** é desenhado por último, na raiz da composição, com
+  `zIndex` alto. O app não tem `Modal` nativo, então nada abre numa janela à
+  parte capaz de cobri-lo — ele fica acima do mundo, do feed, da leitura, das
+  configurações e da apresentação.
+- **Não bloqueia nada** (`pointerEvents="none"`): quem estava lendo ou rolando
+  continua. O VoiceOver ouve "Nova conquista: Primeira casa!".
+- **Sem `setTimeout`:** entrada, espera e saída são uma `withSequence` só, na UI
+  thread, e o fim avisa por `runOnJS`. Se o banner for desmontado no meio (jornada
+  recomeçada), a animação é cancelada e o fim nunca dispara. Cada anúncio monta
+  um banner novo (`key` pela série), então não há estado de reinício.
+- **O fim tira da fila só o anúncio que terminou** (pela série). Um fim atrasado
+  do banner de uma jornada velha não derruba um anúncio novo.
+- **A arte é pixel art 64×64.** Em `assets/achievements/` estão a original e as
+  versões @2x/@3x ampliadas por vizinho-mais-próximo; o Metro escolhe a da
+  densidade do aparelho, e o banner a exibe a 64 pt — cada pixel da arte cai
+  inteiro na tela, sem o borrão de uma ampliação suavizada. A moldura é 2 pt
+  maior que a arte porque, no React Native, a borda come a largura por dentro.
+- O ouro (`OURO_DE_CONQUISTA`, em `shared/theme/cor.ts`) é identidade de
+  recompensa: igual em todas as paletas, e o mesmo do rótulo do World Pulse.
+
+**Para criar uma conquista nova:** uma regra em `engine/regras.ts` e uma entrada
+em `data/achievements.ts`. O tipo do catálogo exige texto e arte para cada id —
+esquecer é erro de compilação, não um banner vazio.
 
 ## A jornada consolida o mundo
 
@@ -945,6 +1409,35 @@ Learning → influências → composição (app/index.tsx) → WorldGrowthEvent 
   `learning` (e de `shared/domain`, que os dois compartilham); o mundo só entende
   influência → evento.
 
+## Laboratório de paletas (temporário, só dev)
+
+Enquanto a identidade visual não está decidida, o modo desenvolvedor tem um
+seletor de paletas: Configurações → seção Desenvolvedor → **Paleta da
+interface**. Trocar muda a interface na hora, sem recarregar.
+
+**É só apresentação.** Não entra no save da jornada, não mexe no mundo, na
+câmera nem no Skia — e pode ser removido inteiro quando a identidade final for
+escolhida (`paletas.ts`, `PaletteDevTools.tsx` e a store em `colors.ts`).
+
+- **Os componentes não sabem qual paleta está ativa.** Eles leem os mesmos
+  tokens de sempre (`bg`, `ink`, `barraAtivo`, `perigo`…); a paleta troca os
+  valores por trás dos nomes. Nada de `ButtonVioleta` nem `if (paleta === …)`.
+- **`paletas.ts` são só dados** (sem React, testáveis fora do app); `colors.ts`
+  tem a store e os hooks. A store é um `useSyncExternalStore` de dez linhas —
+  não precisa envolver a árvore num provider novo.
+- **Só a paleta Atual segue o claro/escuro do aparelho.** Ela é a referência A/B
+  e continua idêntica, barra de status inclusive. As em teste são fixas de
+  propósito: escolher uma escura num aparelho em modo claro precisa mostrar a
+  paleta escura, e não metade de cada.
+- **Cor de tema educacional não é cor de interface.** `astro`, `hist`, `geo` e
+  `nat` seguem a legibilidade do fundo (claro/escuro), não a personalidade da
+  paleta — identidade do conteúdo é outro assunto.
+- **O perigo continua vermelho em todas.** O tom muda para contrastar, mas
+  "Recomeçar jornada" nunca vira pêssego.
+- **O mapa não muda.** Terreno, sprites e caminhos têm a própria paleta
+  (`world/render/palette.ts`), e as fotos dos cards não levam filtro: o branco
+  sobre a imagem escurecida continua fixo, porque ali a cor é da foto.
+
 ## Interface sobre o mapa
 
 - A tela-base é só o mapa. Por cima dele ficam a barra de ações (cápsula
@@ -962,7 +1455,7 @@ Learning → influências → composição (app/index.tsx) → WorldGrowthEvent 
   `position` (topo ou baixo) e `duration` (ms). O aviso reaparece quando o `id`
   muda (mesmo com texto igual) e não aparece se a mensagem estiver vazia.
   Usa `zIndex: 20`, acima das janelas. Tem margens laterais do tamanho do botão
-  flutuante, então fica centralizado sem cobrir a engrenagem nem o menu.
+  flutuante, então fica centralizado sem cobrir a barra de ações.
   - embaixo, 3 s: última ação do jogo (`useWorld`)
   - no topo, 5 s: modo desenvolvedor ativado/desativado (`useDevMode`)
 - Os ícones hoje são símbolos de texto. Para usar pixel art, coloque os PNGs em

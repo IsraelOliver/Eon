@@ -1,20 +1,19 @@
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet, View } from 'react-native';
 
 import { useColors } from '@/shared/theme/colors';
-import { ESPACO_ACTION_BAR } from '@/shared/ui/ActionBar';
 
 import type { Aprendizado } from '../hooks/useLearning';
 import type { Curiosity, CuriosityId, LearningResult } from '../engine/types';
-import { CuriosityCard } from './CuriosityCard';
+import type { WorldPulseItem } from '../presentation/worldPulse';
+import { paraDescobrir } from '../presentation/descoberta';
 import { CuriosityReader } from './CuriosityReader';
+import { DiscoveryFeed } from './DiscoveryFeed';
+import { LearningHeader } from './header/LearningHeader';
 
 type Props = {
   /** Estado de aprendizagem, criado pela composição (o save precisa dele). */
   aprendizado: Aprendizado;
-  /** Avisa quem contém a tela quando a leitura abre ou fecha (o ✕ some durante a leitura). */
-  onLeitura?: (lendo: boolean) => void;
   /**
    * Conhecimento NOVO acabou de ser registrado. Só dispara em `'aprendida'` —
    * quem decide o que é repetição é o engine de learning.
@@ -23,16 +22,47 @@ type Props = {
   onAprendido?: (resultado: LearningResult) => void;
   /** Mostra "Ver no mundo" no fim da leitura. */
   onVerMundo?: () => void;
+  /**
+   * O que o World Pulse mostra nesta entrada, já decidido pela composição.
+   * A tela não escolhe nada: ela mostra o que foi escolhido quando abriu.
+   */
+  pulso?: WorldPulseItem | null;
+  /** A engrenagem do topo é o único caminho para as Configurações. */
+  onConfiguracoes?: () => void;
 };
 
-/** Aba Aprender: o feed e, por cima dele, a leitura em tela cheia. */
-export function LearningScreen({ aprendizado, onLeitura, onAprendido, onVerMundo }: Props) {
+/**
+ * Aba Aprender: o Discovery Feed e, por cima dele, a leitura.
+ *
+ * O feed mostra **só o que ainda não foi aprendido**. O que já foi aprendido não
+ * some do app: sai deste fluxo e passa a pertencer à coleção da pessoa, que terá
+ * tela própria de consulta.
+ */
+export function LearningScreen({
+  aprendizado, onAprendido, onVerMundo, pulso = null, onConfiguracoes,
+}: Props) {
   const c = useColors();
-  const insets = useSafeAreaInsets();
   const [abertaId, setAbertaId] = useState<CuriosityId | null>(null);
 
+  // A leitura procura no catálogo INTEIRO, não no feed: uma curiosidade
+  // recém-aprendida continua aberta e legível até quem está lendo decidir sair.
   const aberta = aprendizado.curiosidades.find((cu) => cu.id === abertaId) ?? null;
-  useEffect(() => onLeitura?.(aberta !== null), [aberta, onLeitura]);
+
+  /*
+   * O feed congela enquanto a leitura está aberta.
+   *
+   * Sem isto, tocar APRENDI reconstruiria a lista por baixo do leitor e, ao
+   * fechar, o feed apareceria em outra posição — a descoberta seguinte pulando
+   * para o lugar da que acabou de sair. Assim a lista só se atualiza quando a
+   * pessoa volta para o feed, que é exatamente quando isso não incomoda.
+   */
+  const [visiveis, setVisiveis] = useState(() =>
+    paraDescobrir(aprendizado.curiosidades, aprendizado.perfil),
+  );
+  useEffect(() => {
+    if (abertaId !== null) return;
+    setVisiveis(paraDescobrir(aprendizado.curiosidades, aprendizado.perfil));
+  }, [abertaId, aprendizado.curiosidades, aprendizado.perfil]);
 
   // O engine registra; aqui só avisamos quem ligou, e só quando houve progresso.
   const aprender = (curiosidade: Curiosity): LearningResult => {
@@ -51,27 +81,11 @@ export function LearningScreen({ aprendizado, onLeitura, onAprendido, onVerMundo
 
   return (
     <View style={[styles.tela, { backgroundColor: c.fundoFeed }]}>
-      <ScrollView
-        contentContainerStyle={[
-          styles.conteudo,
-          { paddingTop: insets.top + 12, paddingBottom: insets.bottom + ESPACO_ACTION_BAR + 12 },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.cabecalho}>
-          <Text style={[styles.titulo, { color: c.ink }]}>Aprender</Text>
-          <Text style={[styles.subtitulo, { color: c.muted }]}>Descubra algo novo.</Text>
-        </View>
-
-        {aprendizado.curiosidades.map((curiosidade) => (
-          <CuriosityCard
-            key={curiosidade.id}
-            curiosidade={curiosidade}
-            aprendida={aprendizado.jaAprendeu(curiosidade.id)}
-            onLer={() => setAbertaId(curiosidade.id)}
-          />
-        ))}
-      </ScrollView>
+      <DiscoveryFeed
+        curiosidades={visiveis}
+        cabecalho={<LearningHeader onConfiguracoes={onConfiguracoes} pulso={pulso} />}
+        onLer={setAbertaId}
+      />
 
       {aberta && (
         <CuriosityReader
@@ -88,9 +102,4 @@ export function LearningScreen({ aprendizado, onLeitura, onAprendido, onVerMundo
 
 const styles = StyleSheet.create({
   tela: { flex: 1 },
-  // gap generoso: um pôster por vez, com ar entre eles.
-  conteudo: { paddingHorizontal: 18, gap: 22, maxWidth: 680, width: '100%', alignSelf: 'center' },
-  cabecalho: { gap: 4, paddingHorizontal: 2, marginBottom: 2 },
-  titulo: { fontSize: 36, fontWeight: '700', letterSpacing: -0.5 },
-  subtitulo: { fontSize: 16 },
 });

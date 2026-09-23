@@ -107,23 +107,29 @@ O local continua sendo estudado. Escavações também revelaram evidências de o
     verificadoEm: '2026-09-21',
   },
   {
-    id: 'teste-historia-1',
+    id: 'geo-naica-crystals-001',
 
     titulo: '[Teste] Uma vila fictícia',
 
     capa: require('../../../../assets/curiosities/teste-historia-1.jpg'),
 
-    preview: 'Outro texto de exemplo, um pouco mais longo, para ver duas linhas.',
+    preview: 'A quase 300 metros de profundidade, mineiros encontraram uma caverna atravessada por cristais grandes o bastante para parecer cenário de ficção científica.',
 
-    conteudo: 'Conteúdo de exemplo com duas fontes. Esta curiosidade não é real.',
+    conteudo: `No ano 2000, trabalhos na mina de Naica, no estado mexicano de Chihuahua, alcançaram uma cavidade extraordinária.
+Dentro dela havia enormes cristais transparentes de gesso. Alguns atingem cerca de 11 metros de comprimento.
+Eles não cresceram rapidamente.
+Durante um longo período, a caverna permaneceu cheia de água quente rica em minerais. Estudos de inclusões microscópicas preservadas nos cristais indicam que seu crescimento aconteceu perto de 54 °C, em condições químicas excepcionalmente estáveis.
+Isso permitiu que poucos cristais continuassem crescendo lentamente em vez de surgirem milhares de cristais pequenos.
+A própria exploração da mina acabou revelando um ambiente que havia permanecido isolado no interior da montanha.
+Por causa da escala, fotografias do lugar parecem enganosas até aparecer uma pessoa ao lado dos cristais.
+Então fica evidente que as “pedras” são maiores que ela. Muito maiores.`,
 
-    tema: 'historia',
+    tema: 'geologia',
 
-    tags: ['vila', 'assentamento'],
+    tags: ['naica', 'cristais', 'gesso', 'minerais', 'mexico'],
 
     influencias: [
-      { chave: 'povoamento', peso: 1 },
-      { chave: 'vegetacao', peso: 1 },
+      { chave: 'exploracao', peso: 1 }
     ],
 
     fontes: [

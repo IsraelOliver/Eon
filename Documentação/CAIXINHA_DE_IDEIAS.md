@@ -520,3 +520,126 @@ Quando uma ideia nova aparecer:
 
 **Regra final:** a Caixinha de Ideias existe para permitir imaginar livremente
 sem obrigar o projeto a implementar tudo que parece interessante.
+
+
+
+**Bagunça kkkk**
+
+3. Marcos de evolução da vila
+O mundo muda de estágio conforme o conhecimento cresce:
+
+assentamento
+→ vila
+→ vila estruturada
+→ pequena cidade
+
+Sem barra de XP berrando na tela. A mudança acontece visualmente, com coisas como praça, fonte, casas maiores e novas estruturas.
+
+4. Combinações de conhecimentos
+Certos conjuntos de temas podem desbloquear construções especiais:
+
+Astronomia + Tecnologia → observatório avançado
+Natureza + Geologia → jardim geológico
+História + Povoamento → monumento
+
+Isso faria cada mundo ficar mais diferente dependendo do que a pessoa aprende.
+
+5. Descobertas-surpresa no mapa ⭐
+Essa eu gostei bastante também. De tempos em tempos, alguma coisa incomum pode aparecer no próprio mundo:
+
+fóssil;
+ruína;
+meteorito;
+árvore rara;
+formação geológica;
+artefato;
+pegadas antigas;
+cristal;
+ponto estranho no terreno.
+
+A pessoa vê algo diferente, toca e recebe uma curiosidade surpresa relacionada àquilo.
+
+Exemplo:
+
+aparece um fóssil
+↓
+jogador toca
+↓
+"Você encontrou algo..."
+↓
+abre curiosidade sobre o animal/fóssil
+↓
+APRENDI
+↓
+recompensa especial
+
+E justamente por ser uma descoberta do mundo, eu daria algo diferente de uma curiosidade comum:
+
+planta rara;
+monumento pequeno;
+decoração exclusiva;
+estrutura especial;
+item visual colecionável;
+talvez uma "descoberta" registrada na jornada.
+
+Não faria isso virar loot box. A graça é surpresa e exploração, não ficar farmando fóssil como um pequeno capitalista paleontológico.
+
+6. Diário / linha do tempo da jornada
+Uma área onde a pessoa consegue olhar para trás:
+
+Você aprendeu X
+→ nasceu sua primeira casa
+
+Você aprendeu Y
+→ sua vila ganhou uma fonte
+
+Você encontrou um fóssil
+→ descoberta especial
+
+Isso combinaria muito com a ideia de o mundo ser uma memória do conhecimento.
+
+7. Landmarks raros
+Algumas curiosidades ou marcos de conhecimento podem criar estruturas realmente especiais:
+
+monumento;
+torre;
+biblioteca;
+árvore monumental;
+grande observatório;
+templo;
+centro científico.
+
+A maioria do crescimento continua comum, então quando algo raro aparece ele realmente chama atenção.
+
+8. Evolução das próprias construções
+Em vez de sempre adicionar mais:
+
+casa pequena
+→ casa maior
+→ construção mais desenvolvida
+
+Isso ajuda a cidade a parecer que está amadurecendo, e não apenas acumulando sprites.
+
+9. Estradas evoluindo
+Os caminhos também poderiam acompanhar a civilização:
+
+trilha
+→ estrada de terra
+→ estrada estruturada
+
+Futuramente até pontes, quando houver conhecimento/infrastrutura suficiente.
+
+10. Identidade temática da cidade
+Conforme o perfil cresce, a cidade começa a revelar o que aquela pessoa gosta de aprender:
+
+muita Astronomia
+→ mais estruturas científicas
+
+muita Natureza
+→ jardins, reservas, plantas raras
+
+muita História
+→ praças e monumentos
+
+muita Geologia
+→ minas, centros de pesquisa, formações expostas

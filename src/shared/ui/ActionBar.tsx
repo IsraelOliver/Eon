@@ -18,9 +18,6 @@ export const ALTURA_ACTION_BAR = ITEM_ALTURA + PADDING * 2;
 /** Quanto a barra ocupa na borda de baixo, fora a safe area. */
 export const ESPACO_ACTION_BAR = ALTURA_ACTION_BAR + MARGEM_ACTION_BAR;
 
-/** Destaque do item sob o dedo: clarear por cima da cápsula escura. */
-const PRESSIONADO = 'rgba(255,255,255,0.14)';
-
 export interface AcaoDaBarra {
   chave: string;
   icone: Icon;
@@ -71,7 +68,7 @@ export function ActionBar({ itens, ativo }: { itens: readonly AcaoDaBarra[]; ati
               style={({ pressed }) => [
                 styles.item,
                 selecionado && { backgroundColor: c.barraAtivo },
-                pressed && !selecionado && { backgroundColor: PRESSIONADO },
+                pressed && !selecionado && { backgroundColor: c.barraPressionado },
               ]}
             >
               {typeof item.icone === 'string' ? (

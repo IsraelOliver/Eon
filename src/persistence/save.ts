@@ -1,15 +1,18 @@
 // =====================================================================
 // CONTRATO DO SAVE — o que é gravado no aparelho, e como se confere.
 //
-// Camada de composição, como `app/`: pode conhecer as duas features, e só
+// Camada de composição, como `app/`: pode conhecer todas as features, e só
 // `app/` e a infraestrutura de gravação (storage.ts) podem importá-la. Não fica
 // em `shared/` porque lá nada pode importar `features/`.
 // =====================================================================
+import type { ConquistasSalvas } from '../features/achievements/engine/estado';
+import { conquistasAlcancadas } from '../features/achievements/engine/regras';
 import type { KnowledgeProfile } from '../features/learning/engine/types';
+import { assuntoDeCrescimento } from '../features/world/engine/destaque';
 import type { WorldSnapshot } from '../features/world/engine/types';
 
 /** Versão do formato gravado hoje. Sobe quando o formato muda. */
-export const VERSAO_DO_SAVE = 2 as const;
+export const VERSAO_DO_SAVE = 3 as const;
 
 /**
  * O mundo salvo. Só o que **não** dá para recalcular.
@@ -25,7 +28,7 @@ export interface AprendizadoSalvo {
   perfil: KnowledgeProfile;
 }
 
-/** Formato antigo. Ainda é lido: `migrarParaAtual` converte para a V2. */
+/** Formato antigo. Ainda é lido: `migrarParaAtual` converte até a atual. */
 export interface SaveV1 {
   version: 1;
   world: MundoSalvo;
@@ -44,8 +47,21 @@ export interface SaveV2 {
   onboardingConcluida: boolean;
 }
 
+export interface SaveV3 {
+  version: 3;
+  world: MundoSalvo;
+  learning: AprendizadoSalvo;
+  onboardingConcluida: boolean;
+  /**
+   * As conquistas da jornada: só as **desbloqueadas**. O que o banner está
+   * anunciando agora é de sessão e nunca vem para cá — por isso abrir o app não
+   * anuncia de novo uma conquista antiga.
+   */
+  achievements: ConquistasSalvas;
+}
+
 /** O formato atual. Quem escreve código novo usa este. */
-export type SaveData = SaveV2;
+export type SaveData = SaveV3;
 
 // ---------------------------------------------------------------------
 // O que é seguro gravar.
@@ -53,7 +69,7 @@ export type SaveData = SaveV2;
 
 export interface DecisaoDeSave {
   /** O último estado coerente. É o que o app grava se sair de cena agora. */
-  seguro: SaveV2;
+  seguro: SaveData;
   /** Gravar já? Só quando o estado está coerente. */
   gravar: boolean;
 }
@@ -71,7 +87,7 @@ export interface DecisaoDeSave {
  * apontando para a jornada coerente anterior, e é ela que vai para o disco se o
  * app for fechado no meio.
  */
-export function decidirSave(atual: SaveV2, seguroAnterior: SaveV2, gerando: boolean): DecisaoDeSave {
+export function decidirSave(atual: SaveData, seguroAnterior: SaveData, gerando: boolean): DecisaoDeSave {
   if (gerando) return { seguro: seguroAnterior, gravar: false };
   return { seguro: atual, gravar: true };
 }
@@ -137,6 +153,22 @@ export function ehSaveV2(valor: unknown): valor is SaveV2 {
 }
 
 /**
+ * Confere se o que veio do disco é um save V3 utilizável.
+ *
+ * Das conquistas confere só a forma (lista de textos). Um id que esta versão
+ * não conhece não invalida o save inteiro: quem o descarta é `estadoInicial`,
+ * na hidratação — melhor perder uma conquista estranha do que a jornada toda.
+ */
+export function ehSaveV3(valor: unknown): valor is SaveV3 {
+  if (!ehObjeto(valor) || valor.version !== 3) return false;
+  if (typeof valor.onboardingConcluida !== 'boolean') return false;
+  const conquistas = valor.achievements;
+  if (!ehObjeto(conquistas) || !Array.isArray(conquistas.desbloqueadas)) return false;
+  if (!conquistas.desbloqueadas.every((id) => typeof id === 'string')) return false;
+  return temCorpoValido(valor);
+}
+
+/**
  * V1 → V2. A V1 não guardava se a apresentação da jornada já tinha sido vista,
  * então deduzimos pelo que ela guardava: **quem já aprendeu alguma coisa já
  * começou a jornada** e não deve ver a apresentação de novo. Save antigo com
@@ -153,11 +185,30 @@ export function migrarV1(antigo: SaveV1): SaveV2 {
 }
 
 /**
- * O que veio do disco, no formato atual — ou `null` se não for utilizável.
- * É aqui que entram as migrações quando a versão sobe.
+ * V2 → V3. A V2 não guardava conquistas, mas guardava o mundo — e é pelo mundo
+ * que deduzimos o que já foi conquistado: quem já tem uma casa já passou pela
+ * primeira casa. Todo o crescimento salvo conta como "o que já nasceu".
+ *
+ * A conquista migrada entra **desbloqueada e sem anúncio**: ela aconteceu antes
+ * desta versão existir, e anunciá-la ao abrir o app seria mentir o momento.
  */
-export function migrarParaAtual(valor: unknown): SaveV2 | null {
-  if (ehSaveV2(valor)) return valor;
-  if (ehSaveV1(valor)) return migrarV1(valor);
+export function migrarV2(antigo: SaveV2): SaveV3 {
+  const jaNasceu = antigo.world.crescimento.map(assuntoDeCrescimento);
+  return {
+    ...antigo,
+    version: 3,
+    achievements: { desbloqueadas: conquistasAlcancadas(jaNasceu, []) },
+  };
+}
+
+/**
+ * O que veio do disco, no formato atual — ou `null` se não for utilizável.
+ * É aqui que entram as migrações quando a versão sobe; elas se encadeiam, então
+ * um save V1 passa pela V2 antes de chegar à V3.
+ */
+export function migrarParaAtual(valor: unknown): SaveData | null {
+  if (ehSaveV3(valor)) return valor;
+  if (ehSaveV2(valor)) return migrarV2(valor);
+  if (ehSaveV1(valor)) return migrarV2(migrarV1(valor));
   return null;
 }

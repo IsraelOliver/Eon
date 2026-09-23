@@ -110,6 +110,13 @@ export interface GrowthElement {
   /** Aparência das residências. O render escolhe o PNG a partir disto. */
   orientacao?: Orientacao;
   variante?: Variante;
+  /**
+   * Qual conhecimento fez isto existir. Para o mundo é um identificador OPACO:
+   * ele não sabe o que significa. Quem traduz em título é a composição, que
+   * conhece as duas features. Ausente em construções do modo dev e nas de saves
+   * anteriores a este campo.
+   */
+  origemConhecimentoId?: string;
 }
 
 /**

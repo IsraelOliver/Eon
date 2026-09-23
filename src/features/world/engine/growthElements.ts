@@ -35,9 +35,16 @@ const EVENTOS_DE_VILA: ReadonlySet<WorldGrowthKind> = new Set(['desenvolverPovoa
 const RESIDENCIAS: ReadonlySet<SpriteKey> = new Set(['casa', 'casa_maior']);
 
 /** Colocação → elemento. Não altera a colocação. */
-export function criarElementoDeCrescimento(colocacao: WorldGrowthPlacement, settlementId?: string): GrowthElement {
+export function criarElementoDeCrescimento(
+  colocacao: WorldGrowthPlacement,
+  settlementId?: string,
+  origemConhecimentoId?: string,
+): GrowthElement {
   const { evento, tipo, x, y, intensidade } = colocacao;
-  return settlementId ? { evento, tipo, x, y, intensidade, settlementId } : { evento, tipo, x, y, intensidade };
+  const base: GrowthElement = { evento, tipo, x, y, intensidade };
+  if (settlementId) base.settlementId = settlementId;
+  if (origemConhecimentoId) base.origemConhecimentoId = origemConhecimentoId;
+  return base;
 }
 
 /** Elemento → ocupante (evento, sprite e posição: o que as regras de lugar precisam). */
@@ -101,6 +108,8 @@ export function aplicarEventosDeCrescimento(
   settlementsAtuais: readonly Settlement[],
   eventos: readonly WorldGrowthEvent[],
   rng: Rng,
+  /** Identificador OPACO do conhecimento que pediu este crescimento (se houver). */
+  origemConhecimentoId?: string,
 ): GrowthResult {
   const ocupantes: WorldOccupant[] = elementosAtuais.map(comoOcupante);
   const adicionados: GrowthElement[] = [];
@@ -130,7 +139,7 @@ export function aplicarEventosDeCrescimento(
       continue; // se a vila acabou de ser criada e a casa não coube, ela não entra
     }
 
-    const base = criarElementoDeCrescimento(resultado.colocacao, vila?.id);
+    const base = criarElementoDeCrescimento(resultado.colocacao, vila?.id, origemConhecimentoId);
     const elemento = vila ? comAparencia(base, vila, mundo.seed) : base;
     adicionados.push(elemento);
     ocupantes.push(comoOcupante(elemento)); // o próximo evento já enxerga este
@@ -145,6 +154,7 @@ export function aplicarEventosDeCrescimento(
     if (!vila.fonte && residenciasDa(vila.id) >= VILA.residenciasParaFonte) {
       const lugar = colocarFonte(mundo, ocupantes, vila, rng);
       if (lugar) {
+        // a fonte nasce junto: mesma origem de tudo o que veio nesta execução
         const fonte: GrowthElement = {
           evento: 'desenvolverPovoamento',
           tipo: 'fonte',
@@ -152,6 +162,7 @@ export function aplicarEventosDeCrescimento(
           y: lugar.y,
           intensidade: evento.intensidade,
           settlementId: vila.id,
+          ...(origemConhecimentoId ? { origemConhecimentoId } : {}),
         };
         adicionados.push(fonte);
         ocupantes.push(comoOcupante(fonte));

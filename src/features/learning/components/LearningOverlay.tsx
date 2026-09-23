@@ -1,15 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing, Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withTiming,
 } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/shared/theme/colors';
-import { ICONS } from '@/shared/ui/icons';
 
 import type { LearningResult } from '../engine/types';
 import type { Aprendizado } from '../hooks/useLearning';
+import type { WorldPulseItem } from '../presentation/worldPulse';
 import { LearningScreen } from './LearningScreen';
 
 const ABRIR_MS = 320;
@@ -35,6 +34,11 @@ type Props = {
   onAprendido?: (resultado: LearningResult) => void;
   /** As configurações só abrem daqui — o mundo não tem botão para elas. */
   onConfiguracoes?: () => void;
+  /**
+   * O estado do World Pulse desta entrada, decidido pela composição. Passa por
+   * aqui de mão em mão: `learning` mostra, mas não sabe de onde veio.
+   */
+  pulso?: WorldPulseItem | null;
 };
 
 /**
@@ -49,11 +53,10 @@ type Props = {
  */
 export function LearningOverlay({
   aberto, aprendizado, origem, onFechar, onFechado, onAprendido, onConfiguracoes,
+  pulso,
 }: Props) {
   const c = useColors();
-  const insets = useSafeAreaInsets();
   const tela = useWindowDimensions();
-  const [lendo, setLendo] = useState(false);
   const progresso = useSharedValue(aberto ? 1 : 0);
   /** Direção mostrada por último. Só transição real move a animação. */
   const estavaAberto = useRef(aberto);
@@ -123,31 +126,11 @@ export function LearningOverlay({
           {/* "Ver no mundo" é o mesmo fechar de sempre: com animação. */}
           <LearningScreen
             aprendizado={aprendizado}
-            onLeitura={setLendo}
             onAprendido={onAprendido}
             onVerMundo={onFechar}
+            onConfiguracoes={onConfiguracoes}
+            pulso={pulso}
           />
-          {/* Sair daqui é pela barra flutuante. Este canto é das configurações. */}
-          {!lendo && onConfiguracoes && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Abrir configurações"
-              onPress={onConfiguracoes}
-              hitSlop={10}
-              style={({ pressed }) => [
-                styles.canto,
-                {
-                  top: insets.top + 10,
-                  right: 16,
-                  backgroundColor: c.cartao,
-                  borderColor: c.line,
-                  opacity: pressed ? 0.7 : 1,
-                },
-              ]}
-            >
-              <Text style={[styles.cantoTexto, { color: c.ink }]}>{ICONS.gear}</Text>
-            </Pressable>
-          )}
         </Animated.View>
       </Animated.View>
     </View>
@@ -156,14 +139,4 @@ export function LearningOverlay({
 
 const styles = StyleSheet.create({
   painel: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' },
-  canto: {
-    position: 'absolute',
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cantoTexto: { fontSize: 16, lineHeight: 19 },
 });

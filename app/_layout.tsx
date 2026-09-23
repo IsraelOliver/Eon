@@ -3,13 +3,14 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { useColors } from '@/shared/theme/colors';
+import { useColors, useEstiloDaStatusBar } from '@/shared/theme/colors';
 
 export default function RootLayout() {
   const c = useColors();
+  const estiloDaStatusBar = useEstiloDaStatusBar();
   return (
     <GestureHandlerRootView style={styles.raiz}>
-      <StatusBar style="light" />
+      <StatusBar style={estiloDaStatusBar} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }} />
     </GestureHandlerRootView>
   );

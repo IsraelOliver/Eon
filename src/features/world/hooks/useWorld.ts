@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { gerarMundo } from '../engine/generate';
 import { CHAVES_DE_CIVILIZACAO, NOMES_DE_CRESCIMENTO } from '../engine/growth';
 import { aplicarEventosDeCrescimento, rngDeCrescimento } from '../engine/growthElements';
+import { escolherDestaque, type Destaque } from '../engine/destaque';
 import { descreverTile } from '../engine/inspect';
 import { FAIXA_NIVEL_MAR, FAIXA_SEMENTE, REGRAS } from '../engine/rules';
 import type {
@@ -27,6 +28,18 @@ type Estado = {
   growthSequence: number;
   mensagem: string;
   idMensagem: number;
+  /**
+   * A novidade que o jogador ainda não viu. Estado de sessão: não entra no save
+   * e é consumido assim que a composição mostra o destaque.
+   */
+  destaque: Destaque | null;
+  /**
+   * O que nasceu desde a última vez que a composição olhou — o `r.adicionados`
+   * do engine, sem interpretação. Acumula até ser consumido, então duas levas
+   * de crescimento no mesmo render não perdem ninguém. Mesmo contrato do
+   * `destaque`: estado de sessão, fora do save.
+   */
+  nascimento: readonly GrowthElement[] | null;
 };
 
 /**
@@ -64,6 +77,8 @@ function criarEstado(idMensagem: number, seed: number, nivelMar: number): Estado
     growthSequence: 0,
     mensagem: 'Mundo novo, ainda selvagem.',
     idMensagem,
+    destaque: null,
+    nascimento: null,
   };
 }
 
@@ -80,6 +95,9 @@ function restaurarEstado(salvo: WorldSnapshot): Estado {
     growthSequence: salvo.growthSequence,
     mensagem: '',
     idMensagem: 0,
+    destaque: null,
+    // O que veio do save já nasceu há muito tempo: não é nascimento de agora.
+    nascimento: null,
   };
 }
 
@@ -94,7 +112,9 @@ export function useWorld(salvo?: WorldSnapshot | null) {
   );
   /** Recriação pedida e ainda não executada. Enquanto existe, o mapa sai da tela. */
   const [pedido, setPedido] = useState<{ seed: number; nivelMar: number } | null>(null);
-  const { mundo, crescimento, settlements, growthSequence, mensagem, idMensagem } = estado;
+  const {
+    mundo, crescimento, settlements, growthSequence, mensagem, idMensagem, destaque, nascimento,
+  } = estado;
 
   // buffer pesado: só é refeito quando o mundo muda
   const terreno = useMemo(() => desenharTerreno(mundo), [mundo]);
@@ -128,11 +148,18 @@ export function useWorld(salvo?: WorldSnapshot | null) {
    * se atropelarem: cada uma enxerga a `growthSequence` deixada pela anterior.
    * O gerador nasce da semente do mundo + essa sequência, nunca do relógio.
    */
-  function aplicarEventos(eventos: readonly WorldGrowthEvent[]) {
+  function aplicarEventos(eventos: readonly WorldGrowthEvent[], origemConhecimentoId?: string) {
     if (eventos.length === 0) return;
     setEstado((s) => {
       const rng = rngDeCrescimento(s.mundo.seed, s.growthSequence);
-      const r = aplicarEventosDeCrescimento(s.mundo, s.crescimento, s.settlements, eventos, rng);
+      const r = aplicarEventosDeCrescimento(
+        s.mundo,
+        s.crescimento,
+        s.settlements,
+        eventos,
+        rng,
+        origemConhecimentoId,
+      );
       return {
         ...s,
         crescimento: r.elementos,
@@ -140,6 +167,10 @@ export function useWorld(salvo?: WorldSnapshot | null) {
         growthSequence: s.growthSequence + 1,
         mensagem: mensagemDeCrescimento(eventos, r),
         idMensagem: s.idMensagem + 1,
+        // nada nasceu → nada a destacar
+        destaque: escolherDestaque(r.adicionados),
+        nascimento:
+          r.adicionados.length > 0 ? [...(s.nascimento ?? []), ...r.adicionados] : s.nascimento,
       };
     });
   }
@@ -156,6 +187,16 @@ export function useWorld(salvo?: WorldSnapshot | null) {
    * `gerando` é a composição) e libera as imagens no desmonte. Fase 2 roda no
    * quadro seguinte, com a superfície antiga já fora do caminho.
    */
+  /** A composição avisa que já mostrou o destaque; ele não deve voltar. */
+  const consumirDestaque = useCallback(() => {
+    setEstado((s) => (s.destaque ? { ...s, destaque: null } : s));
+  }, []);
+
+  /** A composição avisa que já tratou os nascimentos; eles não voltam. */
+  const consumirNascimento = useCallback(() => {
+    setEstado((s) => (s.nascimento ? { ...s, nascimento: null } : s));
+  }, []);
+
   function recriar(seed: number, nivelMar: number) {
     if (pedido) return; // já há uma recriação em curso
     setPedido({ seed, nivelMar });
@@ -177,6 +218,12 @@ export function useWorld(salvo?: WorldSnapshot | null) {
     estadoPersistivel,
     /** Recriando: a composição tira o mapa da árvore e mostra o carregando. */
     gerando: pedido !== null,
+    /** A novidade a mostrar quando o jogador voltar ao mundo (ou null). */
+    destaque,
+    consumirDestaque,
+    /** O que nasceu e ainda não foi tratado (ou null): o `r.adicionados` canônico. */
+    nascimento,
+    consumirNascimento,
     terreno,
     caminhos: camadaCaminhos,
     elementosParaDesenho: paraDesenho,
@@ -201,8 +248,13 @@ export function useWorld(salvo?: WorldSnapshot | null) {
     },
     /** (dev) Crescimentos da civilização, com o nome para o botão (natureza vem da seed). */
     crescimentos: CHAVES_DE_CIVILIZACAO.map((tipo) => ({ tipo, nome: NOMES_DE_CRESCIMENTO[tipo] })),
-    /** O conhecimento chegando ao mapa. A composição traduz influências em eventos. */
+    /**
+     * O conhecimento chegando ao mapa. A composição traduz influências em
+     * eventos e diz de qual conhecimento vieram — para o mundo, só um id opaco.
+     */
     aplicarEventos,
+    /** Só as construções: o que dá para tocar e inspecionar. */
+    construcoes: crescimento,
     /** (dev) Um evento de intensidade 1, pelo mesmo caminho da produção. */
     aplicarCrescimentoDev(tipo: WorldGrowthKind) {
       aplicarEventos([{ tipo, intensidade: 1 }]);

@@ -1,9 +1,15 @@
 import { useCallback, useEffect } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
-import { cancelAnimation, useDerivedValue, useSharedValue, withDecay } from 'react-native-reanimated';
+import {
+  Easing, cancelAnimation, runOnJS, useDerivedValue, useSharedValue, withDecay, withTiming,
+} from 'react-native-reanimated';
 
 const ZOOM_MAXIMO = 8; // em relação ao zoom mínimo
+
+/** Quanto a câmera aproxima ao ir ver uma novidade (múltiplo do zoom mínimo). */
+const ZOOM_DO_FOCO = 3;
+const DURACAO_DO_FOCO = 650; // ms
 
 /**
  * Menor e maior deslocamento permitidos num eixo.
@@ -28,7 +34,7 @@ function prender(valor: number, [min, max]: [number, number]): number {
  * Só muda a transformação (shared values); o buffer de pixels não é tocado.
  * largura/altura = tamanho do mapa em pixels de arte.
  */
-export function useMapCamera(largura: number, altura: number) {
+export function useMapCamera(largura: number, altura: number, aoMover?: () => void) {
   const tela = useWindowDimensions();
   const zoomMin = tela.height / altura; // a altura do mapa preenche a tela
   const zoomMax = zoomMin * ZOOM_MAXIMO;
@@ -53,9 +59,23 @@ export function useMapCamera(largura: number, altura: number) {
     cancelAnimation(y);
   };
 
+  /*
+   * Avisa (uma vez, no início do gesto) que o mapa vai se mexer. O gesto em si
+   * continua na thread de UI — só este aviso cruza para o JS, porque quem ouve
+   * é estado do React.
+   */
+  const avisarMovimento = () => {
+    'worklet';
+    if (aoMover) runOnJS(aoMover)();
+  };
+
   const arrastar = Gesture.Pan()
     .maxPointers(1)
-    .onBegin(pararInercia)
+    .onBegin(() => {
+      'worklet';
+      pararInercia();
+      avisarMovimento();
+    })
     .onChange((e) => {
       if (pincando.value) return;
       x.value = prender(x.value + e.changeX, limites(tela.width, largura * escala.value));
@@ -76,6 +96,7 @@ export function useMapCamera(largura: number, altura: number) {
   const pinca = Gesture.Pinch()
     .onStart((e) => {
       pararInercia();
+      avisarMovimento();
       pincando.value = true;
       focoX.value = e.focalX;
       focoY.value = e.focalY;
@@ -129,11 +150,42 @@ export function useMapCamera(largura: number, altura: number) {
     revisao.set(revisao.get() + 1);
   }, [revisao]);
 
+  /**
+   * Leva a câmera até um ponto do mapa (em pixels de arte), com aproximação.
+   *
+   * Anima em vez de pular: o jogador precisa entender que o mundo é o mesmo e
+   * que ALGO ali mudou. Os limites são calculados com o zoom de destino, então
+   * o ponto final respeita as bordas.
+   */
+  const focarEm = useCallback(
+    (artX: number, artY: number) => {
+      const destinoZoom = Math.min(zoomMax, zoomMin * ZOOM_DO_FOCO);
+      const lx = limites(tela.width, largura * destinoZoom);
+      const ly = limites(tela.height, altura * destinoZoom);
+      const destinoX = prender(tela.width / 2 - artX * destinoZoom, lx);
+      const destinoY = prender(tela.height / 2 - artY * destinoZoom, ly);
+
+      cancelAnimation(x); // qualquer inércia em curso perde a vez
+      cancelAnimation(y);
+      const suave = { duration: DURACAO_DO_FOCO, easing: Easing.inOut(Easing.cubic) };
+      escala.set(withTiming(destinoZoom, suave));
+      x.set(withTiming(destinoX, suave));
+      y.set(withTiming(destinoY, suave));
+    },
+    [tela.width, tela.height, largura, altura, zoomMin, zoomMax, escala, x, y],
+  );
+
+  /** Pixels de arte → coordenadas da tela, com a câmera de AGORA. */
+  const paraTela = (artX: number, artY: number) => ({
+    x: x.get() + artX * escala.get(),
+    y: y.get() + artY * escala.get(),
+  });
+
   /** Converte um ponto da tela para pixels de arte do mapa (desfaz a transformação). */
   const paraMapa = (px: number, py: number) => ({
     x: (px - x.get()) / escala.get(),
     y: (py - y.get()) / escala.get(),
   });
 
-  return { gesto, transformacao, paraMapa, repintar };
+  return { gesto, transformacao, paraMapa, paraTela, repintar, focarEm };
 }
