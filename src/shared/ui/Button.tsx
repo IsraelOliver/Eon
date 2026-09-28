@@ -11,15 +11,20 @@ type Props = {
   swatch?: string;
   /** Valor curto à direita, como um contador. */
   badge?: string | number;
-  /** 'destructive': ação que apaga coisas. Fundo vermelho, texto de alto contraste. */
-  variant?: 'default' | 'destructive';
+  /**
+   * 'primary': a ação principal — laranja da marca, escurece ao pressionar.
+   * 'default': secundária — só borda, sobre a superfície.
+   * 'destructive': ação que apaga coisas — o vermelho de perigo, nunca o laranja.
+   */
+  variant?: 'default' | 'primary' | 'destructive';
   style?: StyleProp<ViewStyle>;
 };
 
 export function Button({ label, onPress, color, swatch, badge, variant = 'default', style }: Props) {
   const c = useColors();
   const destrutivo = variant === 'destructive';
-  const corDoTexto = destrutivo ? c.perigoTexto : c.ink;
+  const primario = variant === 'primary';
+  const corDoTexto = destrutivo ? c.perigoTexto : primario ? c.accentTexto : c.ink;
   return (
     <Pressable
       accessibilityRole="button"
@@ -28,7 +33,12 @@ export function Button({ label, onPress, color, swatch, badge, variant = 'defaul
         styles.base,
         destrutivo
           ? { borderColor: c.perigo, backgroundColor: c.perigo, opacity: pressed ? 0.8 : 1 }
-          : { borderColor: color ?? c.ink, backgroundColor: pressed ? c.pressed : 'transparent' },
+          : primario
+            ? {
+                borderColor: pressed ? c.accentStrong : c.accent,
+                backgroundColor: pressed ? c.accentStrong : c.accent,
+              }
+            : { borderColor: color ?? c.line, backgroundColor: pressed ? c.pressed : 'transparent' },
         style,
       ]}
     >

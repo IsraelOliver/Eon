@@ -21,7 +21,7 @@ export function JourneyIntro({ onComecar }: { onComecar: () => void }) {
       accessibilityViewIsModal
       style={[styles.camada, { backgroundColor: c.overlay }]}
     >
-      <View style={[styles.cartao, { backgroundColor: c.panel, borderColor: c.line }]}>
+      <View style={[styles.cartao, { backgroundColor: c.panel, borderColor: c.line, shadowColor: c.sombra }]}>
         <Text style={[styles.titulo, { color: c.ink }]} accessibilityRole="header">
           Este é o seu mundo.
         </Text>
@@ -29,7 +29,7 @@ export function JourneyIntro({ onComecar }: { onComecar: () => void }) {
         <Text style={[styles.subtexto, { color: c.muted }]}>
           Antes da sua primeira descoberta, você ainda pode escolher outro mundo nas configurações.
         </Text>
-        <Button label="Começar jornada" onPress={onComecar} style={styles.botao} />
+        <Button label="Começar jornada" variant="primary" onPress={onComecar} style={styles.botao} />
       </View>
     </Animated.View>
   );
@@ -55,7 +55,6 @@ const styles = StyleSheet.create({
     padding: 24,
     borderRadius: 20,
     borderWidth: 1,
-    shadowColor: '#000',
     shadowOpacity: 0.3,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },

@@ -79,10 +79,12 @@ export function CuriosityReader({ curiosidade, aprendida, onVoltar, onAprender, 
             onPress={aprender}
             style={({ pressed }) => [
               styles.principal,
-              { backgroundColor: aprendida ? c.line : c.ink, opacity: pressed ? 0.85 : 1 },
+              // A ação que faz o mundo crescer: o laranja da marca. Já aprendida,
+              // vira estado desabilitado — derivado por alpha, sem cor nova.
+              { backgroundColor: aprendida ? c.line : pressed ? c.accentStrong : c.accent },
             ]}
           >
-            <Text style={[styles.principalTexto, { color: aprendida ? c.muted : c.cartao }]}>
+            <Text style={[styles.principalTexto, { color: aprendida ? c.muted : c.accentTexto }]}>
               {aprendida ? 'APRENDIDA' : 'APRENDI'}
             </Text>
           </Pressable>

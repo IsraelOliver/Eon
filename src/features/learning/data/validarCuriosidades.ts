@@ -2,6 +2,7 @@
 // CONFERÊNCIA DO CATÁLOGO — pega erro de cadastro, não de código.
 // Função pura: roda em teste, não a cada render.
 // =====================================================================
+import { ehHexDeCor } from '../../../shared/theme/cor';
 import type { Curiosity } from '../engine/types';
 
 /** Um problema encontrado no catálogo, já legível para quem cadastrou. */
@@ -17,9 +18,12 @@ const vazio = (texto: string | undefined) => !texto || texto.trim().length === 0
  * Confere o catálogo inteiro. Devolve a lista de problemas (vazia = tudo certo).
  *
  * O TypeScript já garante tema, influências e a existência dos campos; o que
- * sobra para conferir aqui é o que ele não vê: id repetido e texto em branco.
+ * sobra para conferir aqui é o que ele não vê: id repetido, texto em branco e
+ * uma cor atmosférica fora do formato.
  */
-export function validarCuriosidades(catalogo: readonly Curiosity[]): ProblemaNoCatalogo[] {
+export function validarCuriosidades(
+  catalogo: readonly (Curiosity & { corAtmosfera?: unknown })[],
+): ProblemaNoCatalogo[] {
   const problemas: ProblemaNoCatalogo[] = [];
   const vistos = new Set<string>();
 
@@ -39,6 +43,11 @@ export function validarCuriosidades(catalogo: readonly Curiosity[]): ProblemaNoC
     }
     if (c.influencias.some((inf) => !Number.isFinite(inf.peso) || inf.peso <= 0)) {
       problemas.push({ onde, problema: 'influência com peso inválido (use 1 ou mais)' });
+    }
+    // Opcional; se estiver lá, só um formato: '#RRGGBB'. No app, uma cor inválida
+    // cai na cor do tema em silêncio — por isso quem avisa é esta conferência.
+    if (c.corAtmosfera !== undefined && !ehHexDeCor(c.corAtmosfera)) {
+      problemas.push({ onde, problema: "corAtmosfera inválida (use '#RRGGBB')" });
     }
   });
 

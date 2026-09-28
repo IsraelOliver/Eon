@@ -10,10 +10,16 @@ import type { CuriosityId } from '../engine/types';
 import { medidasDoFeed, paradasDoFeed, posicaoDoPost } from '../presentation/feedLayout';
 import { DiscoveryPost } from './DiscoveryPost';
 
+/**
+ * Altura do cabeçalho antes da primeira medida (safe area + Éon + World Pulse).
+ * Só vale por um quadro: o `onLayout` do próprio cabeçalho corrige logo depois.
+ */
+const CABECALHO_ESTIMADO = 150;
+
 type Props = {
   /** Só as ainda não descobertas — quem filtra é a tela. */
   curiosidades: readonly CuriosityEntry[];
-  /** Éon + World Pulse. Abre a sessão e sobe junto com o feed. */
+  /** Éon + World Pulse. Flutua sobre a primeira curiosidade e sobe com ela. */
   cabecalho: ReactElement;
   onLer: (id: CuriosityId) => void;
 };
@@ -21,24 +27,24 @@ type Props = {
 /**
  * O Discovery Feed: uma descoberta por vez, ocupando a tela inteira.
  *
- * **Cada post vale uma viewport cheia** (`medidasDoFeed`): a fotografia sangra
- * de borda a borda e passa por baixo da status bar e da ActionBar. Só o texto
- * respeita essas áreas, pelos recuos.
+ * **A primeira curiosidade é a própria tela.** O cabeçalho não é mais um bloco
+ * acima dela: ele flutua SOBRE a foto, que começa no topo físico da tela, e a
+ * atmosfera da curiosidade junta os dois numa composição só. Sem "interface em
+ * cima, fotografia embaixo".
  *
- * **O snap é por offsets, não por intervalo**, porque o cabeçalho tem altura
- * própria (medida no layout) e desalinharia um `snapToInterval` a partir do
- * segundo post. A parada `0` é de propósito: é a abertura da sessão.
+ * Isso também simplificou o snap: como o cabeçalho não ocupa espaço próprio,
+ * todo post começa num múltiplo exato da viewport (`paradasDoFeed`). A altura
+ * medida do cabeçalho só serve para o PRIMEIRO post saber até onde deixar a
+ * atmosfera densa e onde pôr o chip do tema.
  *
- * **Nenhum padding no conteúdo da lista.** A safe area do topo vive dentro do
- * cabeçalho, e embaixo não há padding nenhum — é isso que faz a última parada
- * coincidir exatamente com o fim da rolagem. Um padding aqui empurraria todos
- * os posts e quebraria a conta do snap.
+ * **Nenhum padding no conteúdo da lista.** Com posts de uma viewport cada, o fim
+ * da rolagem coincide exatamente com a última parada. Um padding quebraria isso.
  */
 export function DiscoveryFeed({ curiosidades, cabecalho, onLer }: Props) {
-  const c = useColors();
   const janela = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const [alturaCabecalho, setAlturaCabecalho] = useState(0);
+  const [alturaMedida, setAlturaMedida] = useState<number | null>(null);
+  const alturaDoCabecalho = alturaMedida ?? insets.top + CABECALHO_ESTIMADO;
 
   const { alturaDoPost, recuoTopo, recuoBase } = medidasDoFeed(
     janela,
@@ -47,36 +53,51 @@ export function DiscoveryFeed({ curiosidades, cabecalho, onLer }: Props) {
   );
 
   const paradas = useMemo(
-    () => paradasDoFeed(alturaCabecalho, alturaDoPost, curiosidades.length),
-    [alturaCabecalho, alturaDoPost, curiosidades.length],
+    () => paradasDoFeed(alturaDoPost, curiosidades.length),
+    [alturaDoPost, curiosidades.length],
   );
 
   const medirItem = useCallback(
     (_: unknown, index: number) => ({
       length: alturaDoPost,
-      // Conta o cabeçalho: é assim que a virtualização sabe onde cada post está
-      // de verdade. Errar aqui deixa áreas em branco na rolagem.
-      offset: posicaoDoPost(alturaCabecalho, alturaDoPost, index),
+      offset: posicaoDoPost(alturaDoPost, index),
       index,
     }),
-    [alturaDoPost, alturaCabecalho],
+    [alturaDoPost],
   );
 
   const desenharItem = useCallback(
-    ({ item, index }: { item: CuriosityEntry; index: number }) => (
-      <DiscoveryPost
-        curiosidade={item}
-        altura={alturaDoPost}
-        recuoTopo={recuoTopo}
-        recuoBase={recuoBase}
-        // Só o primeiro nasce colado na interface; os outros encontram o
-        // degradê do post de cima.
-        primeiro={index === 0}
-        corDaInterface={c.fundoFeed}
-        onLer={() => onLer(item.id)}
-      />
-    ),
-    [alturaDoPost, recuoTopo, recuoBase, c.fundoFeed, onLer],
+    ({ item, index }: { item: CuriosityEntry; index: number }) => {
+      const post = (
+        <DiscoveryPost
+          curiosidade={item}
+          altura={alturaDoPost}
+          recuoTopo={recuoTopo}
+          recuoBase={recuoBase}
+          alturaDoCabecalho={index === 0 ? alturaDoCabecalho : undefined}
+          onLer={() => onLer(item.id)}
+        />
+      );
+      if (index !== 0) return post;
+
+      /*
+       * O primeiro post leva o cabeçalho POR CIMA, como irmão — não dentro do
+       * post. Assim um toque no World Pulse não abre a curiosidade: ele cai no
+       * cabeçalho, que não é o botão do post.
+       */
+      return (
+        <View style={{ height: alturaDoPost }}>
+          {post}
+          <View
+            style={[styles.sobreAFoto, { paddingTop: insets.top }]}
+            onLayout={(e) => setAlturaMedida(e.nativeEvent.layout.height)}
+          >
+            {cabecalho}
+          </View>
+        </View>
+      );
+    },
+    [alturaDoPost, recuoTopo, recuoBase, alturaDoCabecalho, cabecalho, insets.top, onLer],
   );
 
   return (
@@ -84,15 +105,14 @@ export function DiscoveryFeed({ curiosidades, cabecalho, onLer }: Props) {
       data={curiosidades}
       keyExtractor={(curiosidade) => curiosidade.id}
       renderItem={desenharItem}
-      ListHeaderComponent={
-        <View
-          style={{ paddingTop: insets.top }}
-          onLayout={(e) => setAlturaCabecalho(e.nativeEvent.layout.height)}
-        >
+      ListEmptyComponent={
+        // Sem curiosidade não há foto: o cabeçalho volta a pousar no fundo da
+        // paleta, como qualquer tela do app.
+        <View style={{ height: alturaDoPost, paddingTop: insets.top }}>
           {cabecalho}
+          <TudoDescoberto recuoBase={recuoBase} />
         </View>
       }
-      ListEmptyComponent={<TudoDescoberto altura={alturaDoPost} recuoBase={recuoBase} />}
       getItemLayout={medirItem}
       snapToOffsets={paradas}
       // Encaixa sem prender: arrasta, solta, o próximo post assenta — e nunca
@@ -109,11 +129,11 @@ export function DiscoveryFeed({ curiosidades, cabecalho, onLer }: Props) {
 }
 
 /** Quando não sobrou nada para descobrir. Não inventa conteúdo: só avisa. */
-function TudoDescoberto({ altura, recuoBase }: { altura: number; recuoBase: number }) {
+function TudoDescoberto({ recuoBase }: { recuoBase: number }) {
   const c = useColors();
 
   return (
-    <View style={[styles.vazio, { height: altura, paddingBottom: recuoBase }]}>
+    <View style={[styles.vazio, { paddingBottom: recuoBase }]}>
       <Text style={[styles.vazioMarca, { color: c.line }]}>◍</Text>
       <Text style={[styles.vazioTitulo, { color: c.ink }]}>Você descobriu tudo por enquanto.</Text>
       <Text style={[styles.vazioTexto, { color: c.muted }]}>
@@ -124,7 +144,8 @@ function TudoDescoberto({ altura, recuoBase }: { altura: number; recuoBase: numb
 }
 
 const styles = StyleSheet.create({
-  vazio: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 10 },
+  sobreAFoto: { position: 'absolute', top: 0, left: 0, right: 0 },
+  vazio: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 10 },
   vazioMarca: { fontSize: 48, lineHeight: 56 },
   vazioTitulo: { fontSize: 20, fontWeight: '700', textAlign: 'center' },
   vazioTexto: { fontSize: 15, lineHeight: 21, textAlign: 'center' },

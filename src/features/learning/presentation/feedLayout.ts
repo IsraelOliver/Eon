@@ -33,34 +33,17 @@ export function medidasDoFeed(
 /**
  * Onde começa o post `indice`, em pixels de rolagem.
  *
- * O cabeçalho (Éon + World Pulse) vem antes do primeiro post e tem altura
- * própria, medida no layout — é por isso que o feed usa `snapToOffsets` e não
- * `snapToInterval`: um passo fixo ignoraria o cabeçalho e desalinharia tudo a
- * partir do segundo post.
+ * O cabeçalho (Éon + World Pulse) não ocupa espaço próprio: ele flutua SOBRE o
+ * primeiro post, que começa no topo da tela. Então todo post começa num
+ * múltiplo exato da viewport — nenhuma medida de cabeçalho entra na conta.
  */
-export function posicaoDoPost(
-  alturaDoCabecalho: number,
-  alturaDoPost: number,
-  indice: number,
-): number {
-  return alturaDoCabecalho + indice * alturaDoPost;
+export function posicaoDoPost(alturaDoPost: number, indice: number): number {
+  return indice * alturaDoPost;
 }
 
-/**
- * As paradas do snap.
- *
- * A primeira é `0` de propósito: é a abertura da sessão, com o cabeçalho à
- * vista. Dali em diante, cada parada é um post inteiro ocupando a tela.
- */
-export function paradasDoFeed(
-  alturaDoCabecalho: number,
-  alturaDoPost: number,
-  quantidade: number,
-): number[] {
-  const posts = Array.from({ length: quantidade }, (_, i) =>
-    posicaoDoPost(alturaDoCabecalho, alturaDoPost, i),
-  );
-  return [0, ...posts];
+/** As paradas do snap: uma por post, cada uma ocupando a tela inteira. */
+export function paradasDoFeed(alturaDoPost: number, quantidade: number): number[] {
+  return Array.from({ length: quantidade }, (_, i) => posicaoDoPost(alturaDoPost, i));
 }
 
 /**

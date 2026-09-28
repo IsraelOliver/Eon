@@ -118,7 +118,7 @@ export function BuildingCallout({ x, y, titulo, texto, destaque }: Props) {
       <View
         style={[
           styles.etiqueta,
-          { left: balao.x, top: balao.y, backgroundColor: c.panel, borderColor: c.line },
+          { left: balao.x, top: balao.y, backgroundColor: c.panel, borderColor: c.line, shadowColor: c.sombra },
         ]}
         onLayout={medir}
       >
@@ -170,7 +170,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
     borderWidth: 1,
-    shadowColor: '#000',
     shadowOpacity: 0.2,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },

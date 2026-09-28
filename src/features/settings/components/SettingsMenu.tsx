@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { useColors } from '@/shared/theme/colors';
+import { useColors, type ThemePreference } from '@/shared/theme/colors';
 import { Button } from '@/shared/ui/Button';
 import { Window } from '@/shared/ui/Window';
 
@@ -17,6 +17,17 @@ type Props = {
   onNovoMundo?: () => void;
   /** Apaga mundo e conhecimento juntos, e começa outra jornada. */
   onRecomecarJornada: () => void;
+  /**
+   * Abre a coleção de conquistas. Configurações só DISPARA: quem sabe o que são
+   * conquistas e qual tela abrir é a composição.
+   */
+  onConquistas: () => void;
+  /** Progresso já em texto ("1/1"), montado pela composição. */
+  resumoDasConquistas: string;
+  /** A aparência escolhida. É do APP, não da jornada: recomeçar não a muda. */
+  aparencia: ThemePreference;
+  /** Configurações só dispara: quem aplica e grava é a composição. */
+  onAparencia: (aparencia: ThemePreference) => void;
   devAtivo: boolean;
   /** Cada toque no enfeite do rodapé (5 seguidos alternam o modo desenvolvedor). */
   onToqueSecreto: () => void;
@@ -24,9 +35,17 @@ type Props = {
   ferramentasDev: ReactNode;
 };
 
+/** Automático primeiro: é o padrão, e o que a maioria deve usar. */
+const OPCOES_DE_APARENCIA: readonly { valor: ThemePreference; rotulo: string }[] = [
+  { valor: 'system', rotulo: 'Automático' },
+  { valor: 'light', rotulo: 'Claro' },
+  { valor: 'dark', rotulo: 'Escuro' },
+];
+
 /** Janela "Configurações". O botão que a abre vive na barra de ações. */
 export function SettingsMenu({
-  aberto, onFechar, onNovoMundo, onRecomecarJornada, devAtivo, onToqueSecreto, ferramentasDev,
+  aberto, onFechar, onNovoMundo, onRecomecarJornada, onConquistas, resumoDasConquistas,
+  aparencia, onAparencia, devAtivo, onToqueSecreto, ferramentasDev,
 }: Props) {
   const c = useColors();
   const [confirmando, setConfirmando] = useState(false);
@@ -71,6 +90,56 @@ export function SettingsMenu({
 
   return (
     <Window visible={aberto} title="Configurações" onClose={onFechar} footer={enfeite}>
+      {/* Coisa do dia a dia, então vem primeiro. Esta janela fecha antes de a
+          coleção abrir: nada fica empilhado. */}
+      <Button
+        label="Conquistas"
+        badge={`${resumoDasConquistas}  ›`}
+        onPress={() => {
+          onFechar();
+          onConquistas();
+        }}
+      />
+
+      <View style={styles.grupo}>
+        <Text style={[styles.rotulo, { color: c.muted }]} accessibilityRole="header">
+          Aparência
+        </Text>
+        {/* Troca na hora, com a janela aberta: nada de reiniciar. */}
+        <View
+          accessibilityRole="radiogroup"
+          style={[styles.segmentos, { borderColor: c.line }]}
+        >
+          {OPCOES_DE_APARENCIA.map((opcao) => {
+            const escolhida = opcao.valor === aparencia;
+            return (
+              <Pressable
+                key={opcao.valor}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: escolhida }}
+                onPress={() => onAparencia(opcao.valor)}
+                style={({ pressed }) => [
+                  styles.segmento,
+                  escolhida
+                    ? { backgroundColor: c.accent }
+                    : pressed && { backgroundColor: c.pressed },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.segmentoTexto,
+                    { color: escolhida ? c.accentTexto : c.ink },
+                    escolhida && styles.segmentoEscolhido,
+                  ]}
+                >
+                  {opcao.rotulo}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
       {onNovoMundo && (
         <Button
           label="Novo mundo"
@@ -115,4 +184,10 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   enfeite: { alignSelf: 'center' },
   enfeiteTexto: { fontSize: 12 },
+  grupo: { gap: 8 },
+  rotulo: { fontSize: 13, fontWeight: '600', letterSpacing: 0.4 },
+  segmentos: { flexDirection: 'row', borderWidth: 1, borderRadius: 12, padding: 3, gap: 3 },
+  segmento: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 9 },
+  segmentoTexto: { fontSize: 14 },
+  segmentoEscolhido: { fontWeight: '700' },
 });

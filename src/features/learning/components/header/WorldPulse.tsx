@@ -4,8 +4,8 @@ import Animated, {
   Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming,
 } from 'react-native-reanimated';
 
-import { useColors } from '@/shared/theme/colors';
-import { OURO_DE_CONQUISTA } from '@/shared/theme/cor';
+import { useColors, type Colors } from '@/shared/theme/colors';
+import { comAlfa } from '@/shared/theme/cor';
 import { ICONS_DO_PULSO } from '@/shared/ui/icons';
 
 import type { WorldPulseItem } from '../../presentation/worldPulse';
@@ -15,19 +15,22 @@ type Variante = 'progressao' | 'ambiental' | 'conquista' | 'descoberta';
 /**
  * A identidade de cada tipo, em dados — não em `if`.
  *
- * Os acentos são fixos, de tom médio, e funcionam no claro e no escuro: o verde
- * é "o mundo está vivo agora", o ouro é marco, o violeta é mistério. A notícia
- * ambiental não tem acento de propósito — é o dia comum, e a hierarquia precisa
- * mostrar que ela vale menos que uma novidade real.
+ * Os acentos são TOKENS da identidade, não cores: o laranja é "o mundo está vivo
+ * agora", o laranja escuro é marco e descoberta. A notícia ambiental não tem
+ * acento de propósito — é o dia comum, e a hierarquia precisa mostrar que ela
+ * vale menos que uma novidade real.
  *
  * `descoberta` já tem a sua linha: quando os achados do mapa existirem, o card
  * está pronto para eles.
  */
-const ESTILO: Record<Variante, { rotulo: string; marca: 'pulso' | 'ponto' | string; acento: string | null }> = {
-  progressao: { rotulo: 'MUNDO AGORA', marca: 'pulso', acento: '#3fae7a' },
+const ESTILO: Record<
+  Variante,
+  { rotulo: string; marca: 'pulso' | 'ponto' | string; acento: keyof Pick<Colors, 'accent' | 'accentStrong'> | null }
+> = {
+  progressao: { rotulo: 'MUNDO AGORA', marca: 'pulso', acento: 'accent' },
   ambiental: { rotulo: 'MUNDO AGORA', marca: 'ponto', acento: null },
-  conquista: { rotulo: 'NOVA CONQUISTA', marca: '✦', acento: OURO_DE_CONQUISTA },
-  descoberta: { rotulo: 'DESCOBERTA', marca: '!', acento: '#8a63d2' },
+  conquista: { rotulo: 'NOVA CONQUISTA', marca: '✦', acento: 'accentStrong' },
+  descoberta: { rotulo: 'DESCOBERTA', marca: '!', acento: 'accentStrong' },
 };
 
 /** Canto reservado ao sprite pixel art (24–32 px) que vai substituir o glifo. */
@@ -36,6 +39,13 @@ const ICONE = 32;
 type Props = {
   /** O item desta entrada, escolhido pela composição quando o aparelho abriu. */
   item: WorldPulseItem | null;
+  /**
+   * A cor atmosférica da curiosidade sobre a qual o card flutua, ou `null` quando
+   * não há foto atrás (feed vazio). Contamina só detalhes — borda, brilho, e na
+   * notícia ambiental a faixa, o ponto e o ícone. Superfície e textos continuam
+   * nos tokens da paleta: é o que garante a leitura em qualquer combinação.
+   */
+  atmosfera?: string | null;
 };
 
 /**
@@ -48,32 +58,51 @@ type Props = {
  * Mostra um item só, e não troca sozinho: a escolha vale até a próxima vez que
  * o aparelho abrir.
  */
-export function WorldPulse({ item }: Props) {
+export function WorldPulse({ item, atmosfera = null }: Props) {
   const c = useColors();
   if (!item) return <View style={styles.reserva} />;
 
   const variante: Variante = item.tipo === 'noticia' ? item.categoria : item.tipo;
   const estilo = ESTILO[variante];
-  const acento = estilo.acento ?? c.muted;
+  const acentoDoTipo = estilo.acento ? c[estilo.acento] : null;
+  /*
+   * A cor dos detalhes. Os tipos com significado (laranja "agora", laranja escuro
+   * de marco) mantêm o seu; a notícia ambiental, que não tem cor própria, veste a
+   * atmosfera da curiosidade.
+   */
+  const detalhe = acentoDoTipo ?? atmosfera;
+  const acento = detalhe ?? c.muted;
   const quando = item.tipo === 'noticia' && item.categoria === 'progressao' ? item.quando : null;
 
   return (
     <View
       accessible
       accessibilityLabel={`${estilo.rotulo}: ${'titulo' in item ? `${item.titulo}. ` : ''}${item.texto}`}
-      style={[styles.sombra, { backgroundColor: c.cartao }]}
+      style={[
+        styles.sombra,
+        { backgroundColor: c.cartao, shadowColor: c.sombra },
+        // Sobre a foto, um brilho suave da atmosfera no lugar da sombra neutra.
+        atmosfera && { shadowColor: atmosfera, shadowOpacity: 0.45, shadowRadius: 14 },
+      ]}
     >
-      <View style={[styles.cartao, { backgroundColor: c.cartao, borderColor: c.line }]}>
-        <View style={[styles.faixa, { backgroundColor: estilo.acento ?? c.line }]} />
+      <View
+        style={[
+          styles.cartao,
+          {
+            backgroundColor: c.cartao,
+            borderColor: atmosfera ? comAlfa(atmosfera, 0.85) : c.line,
+          },
+        ]}
+      >
+        <View style={[styles.faixa, { backgroundColor: detalhe ?? c.line }]} />
 
         <View style={styles.corpo}>
           <View style={styles.textos}>
             <View style={styles.rotuloLinha}>
               <Marca tipo={estilo.marca} cor={acento} />
-              <Text style={[styles.rotulo, { color: estilo.acento ?? c.muted }]}>{estilo.rotulo}</Text>
+              <Text style={[styles.rotulo, { color: acentoDoTipo ? c.accentLegivel : c.muted }]}>{estilo.rotulo}</Text>
               {quando && <Text style={[styles.quando, { color: c.muted }]}>{quando}</Text>}
             </View>
-
             {item.tipo === 'noticia' ? (
               <Manchete texto={item.texto} cor={c.ink} />
             ) : (
@@ -93,10 +122,14 @@ export function WorldPulse({ item }: Props) {
           <View
             style={[
               styles.icone,
-              { backgroundColor: estilo.acento ? `${estilo.acento}1f` : c.panel },
+              { backgroundColor: detalhe ? comAlfa(detalhe, acentoDoTipo ? 0.12 : 0.3) : c.panel },
             ]}
           >
-            <Text style={[styles.iconeTexto, { color: acento }]}>{ICONS_DO_PULSO[item.icone]}</Text>
+            {/* Na ambiental o glifo fica na tinta da paleta: a atmosfera pode ser
+                escura demais para ser lida sobre a superfície. */}
+            <Text style={[styles.iconeTexto, { color: acentoDoTipo ? acento : c.ink }]}>
+              {ICONS_DO_PULSO[item.icone]}
+            </Text>
           </View>
         </View>
       </View>
@@ -190,7 +223,6 @@ const styles = StyleSheet.create({
   sombra: {
     marginHorizontal: 14,
     borderRadius: RAIO,
-    shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },

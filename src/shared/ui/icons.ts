@@ -16,8 +16,12 @@ export type Icon = string | ImageSourcePropType;
 export const ICONS = {
   gear: '⚙︎',
   mundo: '◉',
-  /** Provisório: o aparelho que abre o feed. Vira pixel art depois. */
-  celular: '▯',
+  /**
+   * O ícone que abre o Discovery: pixel art 14×14, desenhada com as próprias
+   * cores — nunca recebe tint. Arquivos gerados por `scripts/gerar-icone-ui.ps1`
+   * (com `-Escala3x 4`).
+   */
+  discovery: require('../../../assets/ui/Letter_Discovery.png'),
 } satisfies Record<string, Icon>;
 
 /** O que pode aparecer no canto do World Pulse. */

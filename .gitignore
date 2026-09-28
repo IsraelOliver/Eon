@@ -41,3 +41,6 @@ example
 # generated native folders
 /ios
 /android
+
+# Skia na web: copiado de node_modules pelo postinstall (setup-skia-web). 8 MB.
+public/canvaskit.wasm

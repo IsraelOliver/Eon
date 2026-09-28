@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import { AchievementToast } from '@/features/achievements/components/AchievementToast';
+import { AchievementsScreen } from '@/features/achievements/components/AchievementsScreen';
 import { CONQUISTAS } from '@/features/achievements/data/achievements';
-import { proximaNaoVista, type AchievementId } from '@/features/achievements/engine/regras';
+import { montarColecao } from '@/features/achievements/engine/colecao';
+import {
+  ORDEM_DAS_CONQUISTAS, proximaNaoVista, type AchievementId,
+} from '@/features/achievements/engine/regras';
 import { useAchievements } from '@/features/achievements/hooks/useAchievements';
 import { LearningOverlay } from '@/features/learning/components/LearningOverlay';
 import type { LearningResult } from '@/features/learning/engine/types';
@@ -13,7 +17,6 @@ import {
   type NoticiaDoMundo, type WorldPulseItem,
 } from '@/features/learning/presentation/worldPulse';
 import { SettingsMenu } from '@/features/settings/components/SettingsMenu';
-import { PaletteDevTools } from '@/features/settings/components/PaletteDevTools';
 import { useDevMode } from '@/features/settings/hooks/useDevMode';
 import { ActionToast } from '@/features/world/components/ActionToast';
 import { BiomeLegend } from '@/features/world/components/BiomeLegend';
@@ -31,25 +34,33 @@ import { useWorld } from '@/features/world/hooks/useWorld';
 import { JourneyIntro } from '@/features/onboarding/components/JourneyIntro';
 import { deveMostrarIntroDaJornada } from '@/features/onboarding/regra';
 import { VERSAO_DO_SAVE, decidirSave, type SaveData } from '@/persistence/save';
+import { carregarPreferencias, salvarPreferencias } from '@/persistence/preferencias';
 import { carregarSave, salvarSave } from '@/persistence/storage';
-import { useColors } from '@/shared/theme/colors';
-import { ActionBar, centroDoItem, type AcaoDaBarra } from '@/shared/ui/ActionBar';
+import {
+  definirAparencia, useColors, usePreferenciaDeAparencia, type ThemePreference,
+} from '@/shared/theme/colors';
+import * as SplashScreen from 'expo-splash-screen';
+import { ActionBar, type AcaoDaBarra } from '@/shared/ui/ActionBar';
 import { ICONS } from '@/shared/ui/icons';
-
-/** Posição do celular na barra: é de lá que o feed cresce. */
-const INDICE_CELULAR = 1;
-const TOTAL_DE_ACOES = 2;
+import { deslocamentoDoMundo } from '@/shared/ui/navegacao';
+import { useProgressoDaNavegacao } from '@/shared/ui/useNavegacao';
 
 /** Quantas novidades recentes ficam na memória. O resto do mundo está no mapa. */
 const LIMITE_DE_NOTICIAS = 6;
 const DIA_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Casca de hidratação: lê o save ANTES de existir qualquer mundo.
+ * Casca de hidratação: lê o save e as preferências ANTES de existir qualquer
+ * mundo.
  *
  * Sem isto, o app criaria um mundo sorteado, desenharia o terreno e só então
  * descobriria que havia um save — com um piscar de mundo errado e um buffer
- * pesado jogado fora. Enquanto a leitura acontece, só o fundo aparece.
+ * pesado jogado fora.
+ *
+ * A aparência vem junto e é aplicada ANTES do primeiro render de verdade: a
+ * splash nativa (segurada em `_layout`) só sai depois disso, então o primeiro
+ * quadro já nasce no tema escolhido — sem piscar claro para quem escolheu
+ * escuro.
  */
 export default function AppScreen() {
   const c = useColors();
@@ -57,18 +68,30 @@ export default function AppScreen() {
 
   useEffect(() => {
     let vivo = true;
-    void carregarSave().then((lido) => {
-      if (vivo) setSave(lido);
-    });
+    Promise.all([carregarSave(), carregarPreferencias()])
+      .then(([lido, preferencias]) => {
+        if (!vivo) return;
+        definirAparencia(preferencias.aparencia);
+        setSave(lido);
+      })
+      // Nenhum dos dois lança, mas a splash nunca pode ficar presa na tela.
+      .catch(() => {
+        if (vivo) setSave(null);
+      });
     return () => {
       vivo = false;
     };
   }, []);
 
+  // Solta a splash depois do commit do estado hidratado, não antes.
+  useEffect(() => {
+    if (save !== undefined) SplashScreen.hideAsync().catch(() => {});
+  }, [save]);
+
   if (save === undefined) {
     return (
       <View style={[styles.tela, styles.carregando, { backgroundColor: c.bg }]}>
-        <ActivityIndicator color={c.ink} />
+        <ActivityIndicator color={c.accent} />
       </View>
     );
   }
@@ -91,7 +114,6 @@ function Jogo({ save }: { save: SaveData | null }) {
   const [despertarMapa, setDespertarMapa] = useState(0);
 
   const tela = useWindowDimensions();
-  const insets = useSafeAreaInsets();
   const world = useWorld(save?.world);
   const aprendizado = useLearning(save?.learning.perfil);
   /** Nasce só com o que está desbloqueado — a fila do banner começa vazia. */
@@ -101,22 +123,48 @@ function Jogo({ save }: { save: SaveData | null }) {
   const dev = useDevMode();
 
   /*
-   * Estas têm identidade fixa de propósito. O efeito da animação do
-   * aparelho depende de `onFechado`: se ela mudasse a cada render, o efeito
-   * re-rodaria sem motivo. O `LearningOverlay` já se protege disso sozinho,
-   * mas o contrato certo é o de cá — não depender de otimização do compilador.
+   * Estas têm identidade fixa de propósito. O efeito da navegação depende de
+   * `onFechado`: se ela mudasse a cada render, o efeito re-rodaria sem motivo.
+   * `useProgressoDaNavegacao` já se protege disso sozinho, mas o contrato certo
+   * é o de cá — não depender de otimização do compilador.
    */
   const abrirAprender = useCallback(() => setAprenderAberto(true), []);
   const fecharAprender = useCallback(() => setAprenderAberto(false), []);
   const aoFecharAprender = useCallback(() => setDespertarMapa((n) => n + 1), []);
   const abrirConfiguracoes = useCallback(() => setConfigAberto(true), []);
   const fecharConfiguracoes = useCallback(() => setConfigAberto(false), []);
+  /** A coleção de conquistas. Aberta a partir de Configurações, que fecha antes. */
+  const [conquistasAbertas, setConquistasAbertas] = useState(false);
+  const abrirConquistas = useCallback(() => setConquistasAbertas(true), []);
+  const fecharConquistas = useCallback(() => setConquistasAbertas(false), []);
 
-  /** Objeto estável: ele alimenta os estilos animados do aparelho. */
-  const origemDoAparelho = useMemo(
-    () => centroDoItem(INDICE_CELULAR, TOTAL_DE_ACOES, tela, insets.bottom),
-    [tela.width, tela.height, insets.bottom],
-  );
+  /**
+   * A aparência: preferência do APP, gravada em `@eon/preferences` — longe do
+   * save da jornada. Por isso "Recomeçar jornada" não a toca. Aplicar é
+   * imediato (só repinta quem lê cor); gravar vai para a fila, em segundo plano.
+   */
+  const aparencia = usePreferenciaDeAparencia();
+  const escolherAparencia = useCallback((nova: ThemePreference) => {
+    definirAparencia(nova);
+    void salvarPreferencias({ aparencia: nova });
+  }, []);
+
+  /**
+   * A navegação Mundo ↔ Discovery. `aprenderAberto` é o DESTINO (a fonte de
+   * verdade lógica); `navegacao` é só o caminho visual até ele, de 0 a 1.
+   *
+   * Um valor só move as três coisas — o Mundo recuando, o Discovery deslizando
+   * e o seletor da ActionBar —, então elas não têm como sair de sincronia.
+   * Quando uma volta ao Mundo TERMINA de verdade, `aoFecharAprender` pede ao mapa
+   * que reenvie a cena ao Skia (a correção do mapa em branco).
+   */
+  const navegacao = useProgressoDaNavegacao(aprenderAberto, aoFecharAprender);
+  const larguraDaTela = tela.width;
+  const parallaxDoMundo = useAnimatedStyle(() => ({
+    // Só `translateX`: opacidade num pai do Skia obrigaria o iOS a compor o mapa
+    // fora da tela a cada quadro — e com o Discovery opaco na frente, nem se veria.
+    transform: [{ translateX: deslocamentoDoMundo(navegacao.value, larguraDaTela) }],
+  }));
 
   /**
    * A ponte aprender → mundo. É o único lugar que vê as duas features, e ele não
@@ -221,6 +269,15 @@ function Jogo({ save }: { save: SaveData | null }) {
   useEffect(() => {
     if (world.gerando) reiniciarConquistas();
   }, [world.gerando, reiniciarConquistas]);
+
+  /**
+   * A coleção: catálogo + o que esta jornada desbloqueou. Projeção, não estado —
+   * recomeçar a jornada bloqueia tudo na hora, sem uma segunda lista para zerar.
+   */
+  const colecao = useMemo(
+    () => montarColecao(ORDEM_DAS_CONQUISTAS, conquistas.desbloqueadas),
+    [conquistas.desbloqueadas],
+  );
 
   /**
    * A vitrine do World Pulse. O banner anuncia a conquista no instante em que
@@ -344,8 +401,8 @@ function Jogo({ save }: { save: SaveData | null }) {
 
   /** Fecha a etiqueta sempre que o mapa deixa de ser o assunto. */
   useEffect(() => {
-    if (aprenderAberto || configAberto || world.gerando) setSelecao(null);
-  }, [aprenderAberto, configAberto, world.gerando]);
+    if (aprenderAberto || configAberto || conquistasAbertas || world.gerando) setSelecao(null);
+  }, [aprenderAberto, configAberto, conquistasAbertas, world.gerando]);
 
   /** Boas-vindas de jornada nova: uma vez só, e nunca no meio de um carregamento. */
   const mostrarIntro = deveMostrarIntroDaJornada({
@@ -368,7 +425,7 @@ function Jogo({ save }: { save: SaveData | null }) {
 
   const acoes: readonly AcaoDaBarra[] = [
     { chave: 'mundo', icone: ICONS.mundo, rotulo: 'Ver o mundo', onPress: fecharAprender },
-    { chave: 'celular', icone: ICONS.celular, rotulo: 'Abrir Aprender', onPress: abrirAprender },
+    { chave: 'discovery', icone: ICONS.discovery, rotulo: 'Abrir Aprender', onPress: abrirAprender },
   ];
 
   /**
@@ -424,8 +481,13 @@ function Jogo({ save }: { save: SaveData | null }) {
 
   return (
     <View style={styles.tela}>
-      <View
-        style={styles.mundo}
+      {/*
+        * O Mundo nunca sai da árvore ao navegar: só recua um pouco (parallax)
+        * enquanto o Discovery passa por cima. A única saída do mapa continua
+        * sendo a recriação do mundo (`world.gerando`), um caminho à parte.
+        */}
+      <Animated.View
+        style={[styles.mundo, parallaxDoMundo]}
         // Com o feed aberto, o mundo continua desenhado, mas fora de alcance —
         // do dedo e do leitor de tela.
         pointerEvents={aprenderAberto ? 'none' : 'auto'}
@@ -439,7 +501,7 @@ function Jogo({ save }: { save: SaveData | null }) {
           */}
         {world.gerando ? (
           <View style={[styles.tela, styles.carregando, { backgroundColor: c.bg }]}>
-            <ActivityIndicator color={c.ink} />
+            <ActivityIndicator color={c.accent} />
           </View>
         ) : (
           <WorldMap
@@ -473,14 +535,13 @@ function Jogo({ save }: { save: SaveData | null }) {
         {/* Avisos por último: ficam acima das janelas */}
         <ActionToast mensagem={world.mensagem} id={world.idMensagem} />
         <ActionToast mensagem={dev.aviso.mensagem} id={dev.aviso.id} position="top" duration={3000} />
-      </View>
+      </Animated.View>
 
       <LearningOverlay
         aberto={aprenderAberto}
+        progresso={navegacao}
         aprendizado={aprendizado}
-        origem={origemDoAparelho}
         onFechar={fecharAprender}
-        onFechado={aoFecharAprender}
         onAprendido={aoAprender}
         onConfiguracoes={abrirConfiguracoes}
         pulso={pulso}
@@ -490,6 +551,10 @@ function Jogo({ save }: { save: SaveData | null }) {
         onFechar={fecharConfiguracoes}
         onNovoMundo={mundoConsolidado ? undefined : world.novoMundo}
         onRecomecarJornada={recomecarJornada}
+        onConquistas={abrirConquistas}
+        resumoDasConquistas={`${colecao.desbloqueadas}/${colecao.total}`}
+        aparencia={aparencia}
+        onAparencia={escolherAparencia}
         devAtivo={dev.ativo}
         onToqueSecreto={dev.registrarToque}
         ferramentasDev={
@@ -504,12 +569,20 @@ function Jogo({ save }: { save: SaveData | null }) {
               onCrescer={world.aplicarCrescimentoDev}
             />
             <BiomeLegend itens={world.legenda} />
-            <PaletteDevTools />
           </>
         }
       />
       {/* A barra vale para o app inteiro: fica acima do mundo e do aparelho. */}
-      <ActionBar itens={acoes} ativo={aprenderAberto ? 'celular' : 'mundo'} />
+      <ActionBar
+        itens={acoes}
+        ativo={aprenderAberto ? 'discovery' : 'mundo'}
+        // O seletor laranja viaja do Mundo ao Discovery com o MESMO progresso das páginas.
+        seletor={{ progresso: navegacao, de: 'mundo', ate: 'discovery' }}
+      />
+
+      {/* A coleção é tela cheia e cobre a barra: tem o próprio "voltar", que
+          devolve a pessoa para onde ela estava (mundo ou feed). */}
+      <AchievementsScreen aberta={conquistasAbertas} colecao={colecao} onFechar={fecharConquistas} />
 
       {/* Por último: enquanto está aberta, é a única coisa que aceita toque. */}
       {mostrarIntro && <JourneyIntro onComecar={() => setOnboardingConcluida(true)} />}

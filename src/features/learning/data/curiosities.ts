@@ -43,6 +43,13 @@ import type { Curiosity } from '../engine/types';
  *
  *   tags:        texto livre, minúsculas e sem acento.
  *
+ *   corAtmosfera (opcional): '#RRGGBB'. O AMBIENTE da capa — escolhido a olho,
+ *                junto com a imagem. Tinge o alto do post e, no primeiro, a
+ *                área de Éon e do World Pulse. Pode ser clara: o app a
+ *                escurece sozinho o quanto for preciso para o texto branco se
+ *                ler. Sem ela, vale a cor do tema. Não é a cor do tema: o chip
+ *                continua com a identidade do assunto.
+ *
  * Acrescentar um tema ou uma influência nova é mudança de código, não de
  * conteúdo: mexe em `shared/domain` e no engine do mundo.
  */
@@ -50,13 +57,18 @@ import type { Curiosity } from '../engine/types';
 /**
  * Uma curiosidade do catálogo.
  *
- * É a `Curiosity` do engine mais a capa. A imagem fica só aqui de propósito:
- * o engine continua sem saber que existem imagens, e mesmo assim você cadastra
- * tudo num bloco só.
+ * É a `Curiosity` do engine mais a apresentação editorial: capa e atmosfera.
+ * Elas ficam só aqui de propósito — o engine continua sem saber que existem
+ * imagens ou cores, e mesmo assim você cadastra tudo num bloco só.
  */
 export interface CuriosityEntry extends Curiosity {
   /** Capa do card. Sem ela, o card usa a cor e o símbolo do tema. */
   capa?: ImageSourcePropType;
+  /**
+   * A cor do ambiente da capa, '#RRGGBB', escolhida à mão. Nunca é calculada no
+   * aparelho. Conteúdo editorial: não vai para o save.
+   */
+  corAtmosfera?: string;
 }
 
 /**
@@ -72,6 +84,9 @@ export const CURIOSIDADES: readonly CuriosityEntry[] = [
     titulo: 'A cidade perdida que ficou escondida por séculos!',
 
     capa: require('../../../../assets/curiosities/espiritu-pampa.jpg'),
+
+    // Verde da floresta nas encostas da capa.
+    corAtmosfera: '#2e4a2b',
 
     preview: 'Por séculos, a última capital dos incas permaneceu escondida na selva peruana, enquanto exploradores procuravam a cidade perdida no lugar errado.',
 
@@ -112,6 +127,8 @@ O local continua sendo estudado. Escavações também revelaram evidências de o
     titulo: '[Teste] Uma vila fictícia',
 
     capa: require('../../../../assets/curiosities/teste-historia-1.jpg'),
+    // Teste visual: terracota da pedra esculpida, puxada para o carvão.
+    corAtmosfera: '#5a3a26',
 
     preview: 'A quase 300 metros de profundidade, mineiros encontraram uma caverna atravessada por cristais grandes o bastante para parecer cenário de ficção científica.',
 
@@ -143,6 +160,8 @@ Então fica evidente que as “pedras” são maiores que ela. Muito maiores.`,
     titulo: '[Teste] Uma estrela fictícia',
 
     capa: require('../../../../assets/curiosities/teste-astronomia-1.jpg'),
+    // Teste visual: azul-ardósia do espaço profundo ao redor do buraco negro.
+    corAtmosfera: '#1e2638',
 
     preview: 'Exemplo curto de astronomia.',
 

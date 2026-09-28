@@ -1,5 +1,5 @@
 // =====================================================================
-// OS DEGRADÊS DO POST — a emenda entre uma fotografia e a seguinte.
+// OS DEGRADÊS DO POST — a atmosfera no alto, a emenda, o rodapé.
 // Puro: só strings de degradê. Quem desenha é o componente.
 // =====================================================================
 import { comAlfa } from '../../../shared/theme/cor';
@@ -15,11 +15,9 @@ import { comAlfa } from '../../../shared/theme/cor';
 export const ALFA_NA_EMENDA = 0.82;
 
 /**
- * A base do post: escurece progressivamente até a emenda.
- *
- * Faz dois trabalhos — protege o título, o preview e o `Ler →`, e prepara o
- * encontro com o post de baixo. Nunca vira bloco sólido: começa transparente
- * em um terço da altura e só endurece no último quarto.
+ * A base do post: escurece progressivamente até a emenda. Sempre **preta**,
+ * nunca atmosférica: o rodapé tem um trabalho só, que é garantir a leitura do
+ * título, do preview e do `Ler →` sobre qualquer fotografia.
  */
 export const DEGRADE_DA_BASE =
   'rgba(0,0,0,0) 34%, ' +
@@ -28,36 +26,44 @@ export const DEGRADE_DA_BASE =
   'rgba(0,0,0,0.72) 88%, ' +
   `rgba(0,0,0,${ALFA_NA_EMENDA}) 100%`;
 
-/**
- * O alto do post: começa na escuridão da emenda e revela a fotografia.
- *
- * Também é o que garante contraste ao chip do tema sobre uma foto clara.
- * Escuro **neutro**, nunca a cor da paleta: dentro do feed a experiência é
- * fotográfica, e um creme ou um violeta entre duas fotos quebraria isso.
- */
-export const DEGRADE_DO_TOPO =
-  `rgba(0,0,0,${ALFA_NA_EMENDA}) 0%, ` +
-  'rgba(0,0,0,0.46) 28%, ' +
-  'rgba(0,0,0,0.16) 60%, ' +
-  'rgba(0,0,0,0) 100%';
-
-/** Quanto do alto o degradê ocupa. Discreto: a fotografia continua mandando. */
+/** Quanto do alto a atmosfera discreta ocupa nos posts depois do primeiro. */
 export const ALTURA_DO_TOPO = '14%';
 
-/** A ponte entre a interface e a primeira fotografia, em pixels. */
-export const ALTURA_DA_PONTE = 108;
+/**
+ * O alto dos posts depois do primeiro: nasce na escuridão da emenda e passa
+ * pela atmosfera da curiosidade antes de revelar a foto.
+ *
+ * A primeira parada é **preta**, igual ao fim do post de cima — é isso que
+ * mantém a emenda sem degrau. A cor só aparece logo abaixo, então cada swipe
+ * muda o ambiente sem riscar uma linha colorida na divisão.
+ */
+export function paradasDoTopo(corDoTopo: string): string {
+  return (
+    `rgba(0,0,0,${ALFA_NA_EMENDA}) 0%, ` +
+    `${comAlfa(corDoTopo, 0.45)} 30%, ` +
+    `${comAlfa(corDoTopo, 0.16)} 62%, ` +
+    `${comAlfa(corDoTopo, 0)} 100%`
+  );
+}
+
+/** Quanto a atmosfera do primeiro post desce ABAIXO do cabeçalho até sumir. */
+export const FADE_ATMOSFERICO = 140;
 
 /**
- * A ponte do primeiro post: dissolve a cor da INTERFACE na fotografia.
+ * A atmosfera do PRIMEIRO post: forte onde estão Éon, engrenagem e World Pulse,
+ * e depois dissolvendo na fotografia.
  *
- * Só aqui a paleta entra num degradê do feed — é a passagem do World Pulse
- * (que é interface) para a foto. De um post para o outro, a emenda é sempre
- * escura e neutra.
+ * `fracaoDoCabecalho` é quanto do degradê o cabeçalho ocupa (0–1). Até ali a cor
+ * fica densa — a legibilidade da interface depende disso —, e só então começa a
+ * sumir. A foto nunca some por completo: mesmo no alto, ela ainda transparece.
  */
-export function paradasDaPonte(corDaInterface: string): string {
+export function paradasDaAtmosfera(corDoTopo: string, fracaoDoCabecalho: number): string {
+  const fim = Math.min(Math.max(fracaoDoCabecalho, 0), 0.9) * 100;
+  const meio = fim + (100 - fim) * 0.55;
   return (
-    `${comAlfa(corDaInterface, 1)} 0%, ` +
-    `${comAlfa(corDaInterface, 0.68)} 40%, ` +
-    `${comAlfa(corDaInterface, 0)} 100%`
+    `${comAlfa(corDoTopo, 0.94)} 0%, ` +
+    `${comAlfa(corDoTopo, 0.84)} ${fim.toFixed(1)}%, ` +
+    `${comAlfa(corDoTopo, 0.3)} ${meio.toFixed(1)}%, ` +
+    `${comAlfa(corDoTopo, 0)} 100%`
   );
 }

@@ -1,24 +1,29 @@
 // =====================================================================
-// O TEMA EM USO — a paleta ativa e as cores que os componentes leem.
-// Os dados das paletas ficam em paletas.ts, sem React, para serem testáveis.
+// O TEMA EM USO — a preferência de aparência e as cores que os componentes leem.
+// Os dois temas ficam em temas.ts, sem React, para serem testáveis.
 // =====================================================================
 import { useSyncExternalStore } from 'react';
 import { useColorScheme } from 'react-native';
 
-import { PALETAS, PALETA_PADRAO, type Colors, type PaletteKey } from './paletas';
+import {
+  coresDoTema, estiloDaStatusBar, PREFERENCIA_PADRAO, resolverTema,
+  type Colors, type TemaEfetivo, type ThemePreference,
+} from './temas';
 
-export { CHAVES_DE_PALETA, PALETAS, PALETA_PADRAO } from './paletas';
-export type { Colors, Paleta, PaletteKey } from './paletas';
+export type { Colors, TemaEfetivo, ThemePreference } from './temas';
 
 // ---------------------------------------------------------------------
-// A escolha do momento.
+// A preferência (Automático / Claro / Escuro).
 //
 // Uma store minúscula em vez de Context: nada precisa envolver a árvore, e
-// `useSyncExternalStore` já re-renderiza quem usa `useColors()`. Some junto com
-// o seletor quando a identidade final for decidida.
+// `useSyncExternalStore` re-renderiza só quem usa `useColors()`. Trocar de tema
+// não toca no mundo, no Skia nem no feed — apenas repinta quem lê cor.
+//
+// Quem grava a escolha no aparelho é a composição (`persistence/preferencias`);
+// aqui só fica o valor em uso.
 // ---------------------------------------------------------------------
 
-let ativa: PaletteKey = PALETA_PADRAO;
+let preferencia: ThemePreference = PREFERENCIA_PADRAO;
 const ouvintes = new Set<() => void>();
 
 function inscrever(ouvinte: () => void): () => void {
@@ -26,32 +31,37 @@ function inscrever(ouvinte: () => void): () => void {
   return () => ouvintes.delete(ouvinte);
 }
 
-/** (dev) Troca a paleta na hora. Só apresentação: não toca em save nem no mundo. */
-export function definirPaleta(chave: PaletteKey): void {
-  if (chave === ativa) return;
-  ativa = chave;
+/** Troca a aparência na hora. Não grava — isso é com quem chamou. */
+export function definirAparencia(nova: ThemePreference): void {
+  if (nova === preferencia) return;
+  preferencia = nova;
   for (const ouvinte of ouvintes) ouvinte();
 }
 
-export function usePaletaAtiva(): PaletteKey {
+export function usePreferenciaDeAparencia(): ThemePreference {
   return useSyncExternalStore(
     inscrever,
-    () => ativa,
-    () => ativa,
+    () => preferencia,
+    () => preferencia,
   );
 }
 
-/** Cores da interface: da paleta ativa e, só na Atual, do modo do sistema. */
-export function useColors(): Colors {
-  const paleta = PALETAS[usePaletaAtiva()];
-  const escuro = useColorScheme() === 'dark';
-  return paleta.seguirSistema && escuro ? paleta.escuro : paleta.claro;
+/**
+ * O tema na tela agora. Em Automático, acompanha o iOS ao vivo (`useColorScheme`
+ * re-renderiza quando o sistema muda); em Claro ou Escuro, ignora o sistema.
+ */
+export function useTemaEfetivo(): TemaEfetivo {
+  const escolha = usePreferenciaDeAparencia();
+  const doSistema = useColorScheme();
+  return resolverTema(escolha, doSistema === 'dark' || doSistema === 'light' ? doSistema : null);
 }
 
-/**
- * Estilo dos ícones da barra de status para a paleta ativa.
- * Na Atual continua `light`, como sempre foi: ali a barra fica sobre o mapa.
- */
+/** Cores da interface no tema efetivo. */
+export function useColors(): Colors {
+  return coresDoTema(useTemaEfetivo());
+}
+
+/** Ícones da barra de status que leem sobre o fundo do tema efetivo. */
 export function useEstiloDaStatusBar(): 'light' | 'dark' {
-  return PALETAS[usePaletaAtiva()].statusBar;
+  return estiloDaStatusBar(useTemaEfetivo());
 }

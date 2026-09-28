@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useColors } from '@/shared/theme/colors';
+import { MARCA } from '@/shared/theme/marca';
 import { ICONS } from '@/shared/ui/icons';
 
 /**
@@ -12,17 +13,27 @@ const CANTO = 44;
 type Props = {
   /** A engrenagem é o único caminho para as Configurações. */
   onConfiguracoes?: () => void;
+  /**
+   * Sobre a atmosfera de uma foto, o nome e a engrenagem ficam brancos: a
+   * atmosfera é escurecida justamente para isso. Sem foto atrás, seguem a tinta
+   * da paleta.
+   */
+  sobreAFoto?: boolean;
 };
 
+/** Branco sobre a atmosfera: ela é escurecida até o contraste passar de 7:1. */
+const BRANCO = MARCA.branco;
+
 /** A linha do nome: espaço vazio, Éon, engrenagem — nesta ordem, uma linha só. */
-export function TopBar({ onConfiguracoes }: Props) {
+export function TopBar({ onConfiguracoes, sobreAFoto = false }: Props) {
   const c = useColors();
+  const tinta = sobreAFoto ? BRANCO : c.ink;
 
   return (
     <View style={styles.linha}>
       <View style={styles.canto} />
 
-      <Text style={[styles.nome, { color: c.ink }]} numberOfLines={1}>
+      <Text style={[styles.nome, { color: tinta }]} numberOfLines={1}>
         Éon
       </Text>
 
@@ -36,7 +47,7 @@ export function TopBar({ onConfiguracoes }: Props) {
         style={({ pressed }) => [styles.canto, styles.engrenagem, pressed && styles.pressionado]}
       >
         {onConfiguracoes && (
-          <Text style={[styles.icone, { color: c.ink }]}>{ICONS.gear}</Text>
+          <Text style={[styles.icone, { color: tinta }]}>{ICONS.gear}</Text>
         )}
       </Pressable>
     </View>

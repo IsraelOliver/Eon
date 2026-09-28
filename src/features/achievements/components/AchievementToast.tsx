@@ -5,7 +5,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { comAlfa, OURO_DE_CONQUISTA } from '@/shared/theme/cor';
+import { comAlfa } from '@/shared/theme/cor';
 import { useColors } from '@/shared/theme/colors';
 
 import { CONQUISTAS } from '../data/achievements';
@@ -87,17 +87,17 @@ function Faixa({ anuncio, onFim }: { anuncio: Anuncio; onFim: (serie: number) =>
       <View
         style={[
           styles.cartao,
-          { backgroundColor: c.panel, borderColor: comAlfa(OURO_DE_CONQUISTA, 0.55) },
+          { backgroundColor: c.panel, borderColor: comAlfa(c.accent, 0.55), shadowColor: c.accent },
         ]}
       >
         {/* Recorte arredondado, como uma miniatura. A arte é exibida no tamanho
             exato do arquivo da densidade do aparelho: nada é esticado. */}
-        <View style={[styles.moldura, { borderColor: comAlfa(OURO_DE_CONQUISTA, 0.4) }]}>
+        <View style={[styles.moldura, { borderColor: comAlfa(c.accent, 0.4) }]}>
           <Image source={conquista.imagem} style={styles.arte} />
         </View>
 
         <View style={styles.textos}>
-          <Text style={[styles.rotulo, { color: OURO_DE_CONQUISTA }]}>✦  NOVA CONQUISTA</Text>
+          <Text style={[styles.rotulo, { color: c.accentLegivel }]}>✦  NOVA CONQUISTA</Text>
           <Text style={[styles.titulo, { color: c.ink }]} numberOfLines={1}>
             {conquista.titulo}
           </Text>
@@ -131,7 +131,6 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     // Um brilho dourado curto por baixo: recompensa, não alerta.
-    shadowColor: OURO_DE_CONQUISTA,
     shadowOpacity: 0.35,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 6 },

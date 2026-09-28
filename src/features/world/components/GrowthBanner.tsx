@@ -52,7 +52,7 @@ export function GrowthBanner({ titulo, subtitulo, id }: Props) {
       accessibilityLiveRegion="polite"
       style={[
         styles.faixa,
-        { top: insets.top + MARGEM, backgroundColor: c.panel, borderColor: c.line },
+        { top: insets.top + MARGEM, backgroundColor: c.panel, borderColor: c.line, shadowColor: c.sombra },
         animado,
       ]}
     >
@@ -76,7 +76,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     // Acima do mapa e da barra, abaixo das janelas e da apresentação.
     zIndex: 25,
-    shadowColor: '#000',
     shadowOpacity: 0.22,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },

@@ -59,7 +59,7 @@ src/
         curiosities.ts       → CATÁLOGO: a única fonte de conteúdo (você edita aqui)
         validarCuriosidades.ts → confere o catálogo (ids repetidos, campo vazio)
       components/            → interface do Aprender (React Native, sem Skia)
-        LearningOverlay.tsx  → o aparelho: cresce do botão e abre o feed sobre o mapa
+        LearningOverlay.tsx  → o Discovery: página vizinha do Mundo, desliza por cima dele
         LearningScreen.tsx   → a tela: feed + leitura; avisa onAprendido ao registrar
         DiscoveryFeed.tsx    → FlatList com snap: uma descoberta por viewport
         DiscoveryPost.tsx    → o post: fotografia em tela cheia, título e "Ler →"
@@ -68,32 +68,37 @@ src/
         coverTheme.ts        → capa provisória por tema (cor + símbolo)
         descoberta.ts        → o que ainda falta descobrir (o filtro do feed)
         feedLayout.ts        → a conta do feed: viewport, recuos e paradas do snap
+        atmosfera.ts         → a cor atmosférica: cadastrada ou do tema, escurecida p/ contraste
+        degradeDoPost.ts     → os degradês do post: atmosfera, emenda e rodapé preto
         worldPulse.ts        → a regra do World Pulse e o item que ele mostra
       hooks/
         useLearning.ts       → perfil da sessão; delega a decisão ao engine
     achievements/            → conquistas da jornada (não importa world nem learning)
       engine/regras.ts       → o que desbloqueia cada conquista (pura)
       engine/estado.ts       → desbloqueadas (salvo) + fila do banner (sessão) (pura)
+      engine/colecao.ts      → a coleção: catálogo + desbloqueadas → itens e contagem (pura)
       data/achievements.ts   → CATÁLOGO: título, frase e arte de cada conquista
       hooks/useAchievements.ts → guarda o estado; cada ação é uma função pura
       components/AchievementToast.tsx → banner global que desce do topo
+      components/AchievementsScreen.tsx → a coleção (aberta por Configurações)
     onboarding/              → boas-vindas de uma jornada nova
       regra.ts               → quando a apresentação aparece (pura)
       components/JourneyIntro.tsx → o cartão por cima do mundo
     settings/                → configurações do app
       components/
-        SettingsMenu.tsx     → janela "Configurações" (+ seção Desenvolvedor)
-        PaletteDevTools.tsx  → (dev, temporário) seletor de paletas da interface
+        SettingsMenu.tsx     → janela "Configurações": Conquistas, Aparência (+ Desenvolvedor)
       hooks/
         useDevMode.ts        → modo desenvolvedor: 5 toques secretos liga/desliga
   persistence/               → o save (camada de composição, como app/)
     save.ts                  → SaveV3 (+ migrações V1→V2→V3), conferência e decidirSave
     storage.ts               → AsyncStorage: ler, gravar em fila, apagar
+    preferencias.ts          → @eon/preferences: a aparência, separada da jornada
   shared/                    → o que qualquer funcionalidade pode usar
     domain/themeKey.ts       → ThemeKey: temas em comum entre learning e world (tipo puro)
     domain/influence.ts      → InfluenceKey, KnowledgeInfluence: contrato learning → world
-    theme/paletas.ts         → as paletas em teste (dados puros, sem React)
-    theme/colors.ts          → useColors(): tokens da paleta ativa + store dev
+    theme/marca.ts           → as sete cores oficiais (a fonte única)
+    theme/temas.ts           → temaClaro/temaEscuro derivados da marca; resolverTema (puro)
+    theme/colors.ts          → useColors(): tokens do tema efetivo + store da aparência
     ui/Button.tsx            → botão reutilizável
     ui/ActionBar.tsx         → barra de ações: cápsula central embaixo (só ícones)
     ui/Window.tsx            → janela base: fundo escurecido, fade, título, conteúdo, rodapé
@@ -101,6 +106,27 @@ src/
     ui/Gradient.tsx          → degradê linear vertical (único lugar que sabe desenhar um)
     ui/icons.ts              → ícones da interface (único lugar para trocar por pixel art)
 ```
+
+## Entrada do app e a web
+
+`package.json` aponta `"main": "index"`, e o Metro escolhe o arquivo pela
+plataforma:
+
+- **`index.tsx`** (iOS e Android): só `import 'expo-router/entry'` — exatamente o
+  que o `main` antigo fazia. O nativo não mudou em nada.
+- **`index.web.tsx`** (web): carrega o Skia **antes** do primeiro render. No
+  celular o Skia é nativo e já existe quando o app abre; na web ele roda sobre o
+  CanvasKit (WebAssembly, 8 MB), que precisa ser baixado primeiro. Sem isso,
+  `Skia.Image` ainda não existe quando o mapa monta e o app quebra.
+
+O `canvaskit.wasm` é servido de `public/`. Ele vem de `node_modules` (o
+`canvaskit-wasm` é dependência do próprio Skia — nada novo foi instalado), é
+copiado pelo `postinstall` (`setup-skia-web public`) e fica fora do git. O
+`public` vai explícito porque o script, sem `web.bundler` no `app.json`, copiaria
+para a pasta do webpack.
+
+A web serve para **visualizar** o app sem um celular; o alvo continua sendo o
+iPhone.
 
 ## Fluxo de dados
 
@@ -162,7 +188,10 @@ toque no botão → componente chama função recebida por props
 | Mudar a faixa do slider de nível do mar | `engine/rules.ts` (`FAIXA_NIVEL_MAR`) |
 | Mudar cores do mapa ou sprites          | `render/palette.ts`, `sprites.ts`     |
 | Mudar cores/botões da interface         | `shared/theme`, `shared/ui`           |
+| Mudar uma cor oficial da marca          | `shared/theme/marca.ts` (os temas derivam dela) |
+| Mudar como o claro/escuro usa a marca   | `shared/theme/temas.ts`               |
 | Trocar os ícones (gear, menu)           | `shared/ui/icons.ts`                  |
+| Transformar um ícone em pixel art       | `scripts/gerar-icone-ui.ps1` + `shared/ui/icons.ts` |
 | Mudar o que aparece numa janela         | `SettingsMenu.tsx`                    |
 | Mudar quantos toques ativam o modo dev  | `settings/hooks/useDevMode.ts`        |
 | Adicionar uma ferramenta de dev         | componente na feature + `ferramentasDev` em `app/index.tsx` |
@@ -170,19 +199,23 @@ toque no botão → componente chama função recebida por props
 | Adicionar um tipo de influência         | `shared/domain/influence.ts` + destino em `world/engine/growth.ts` |
 | Mudar o que aprender dá ao perfil       | `learning/engine/profile.ts`          |
 | Mudar o formato do save                 | `persistence/save.ts` (`SaveV3`, `VERSAO_DO_SAVE`, `migrarParaAtual`) |
-| Criar uma conquista nova                | `achievements/engine/regras.ts` (regra) + `achievements/data/achievements.ts` (texto e arte) |
+| Criar uma conquista nova                | `achievements/engine/regras.ts` (regra) + `scripts/gerar-sprite-conquista.ps1` (arte) + `achievements/data/achievements.ts` (texto) |
 | Mudar o banner de conquista             | `achievements/components/AchievementToast.tsx` |
+| Mudar a tela de Conquistas              | `achievements/components/AchievementsScreen.tsx` |
 | Mexer na gravação/chave do save         | `persistence/storage.ts` (`@eon/save`) |
 | Mexer na aleatoriedade do crescimento   | `world/engine/growthElements.ts` (`rngDeCrescimento`) |
 | Mexer na ponte aprender → mundo         | `app/index.tsx` (`aoAprender`)        |
 | Mudar como o mundo aplica crescimento   | `world/hooks/useWorld.ts` (`aplicarEventos`) |
 | Mudar os botões da barra de baixo       | `app/index.tsx` (`acoes`) + `shared/ui/icons.ts` |
 | Mudar o formato/tamanho da barra        | `shared/ui/ActionBar.tsx`             |
+| Mudar a transição Mundo ↔ Discovery     | `shared/ui/navegacao.ts` (`PARALLAX_DO_MUNDO`, `DURACAO_DA_NAVEGACAO`) |
 | Mudar a animação de abrir o feed        | `learning/components/LearningOverlay.tsx` |
 | Acrescentar/editar uma curiosidade      | `learning/data/curiosities.ts` (só isso) |
 | Mudar o post do feed                    | `learning/components/DiscoveryPost.tsx` |
 | Mudar o snap/altura dos posts           | `learning/presentation/feedLayout.ts` |
 | Mudar o que entra no feed               | `learning/presentation/descoberta.ts` |
+| Dar a cor atmosférica de uma capa       | `learning/data/curiosities.ts` (campo `corAtmosfera`) |
+| Mudar o quanto a atmosfera escurece     | `learning/presentation/atmosfera.ts` (`LUMINANCIA_MAXIMA_DO_TOPO`) |
 | Colocar a capa de uma curiosidade       | `assets/curiosities/` + campo `capa` no catálogo |
 | Mudar a capa provisória de um tema      | `learning/presentation/coverTheme.ts` |
 | Mudar a força do degradê do post        | `learning/components/DiscoveryPost.tsx` (`DEGRADE`) |
@@ -229,9 +262,9 @@ Curiosity ─registrarAprendizado─▶ LearningResult.influencias ─gerarEvent
 useLearning (perfil da sessão)
    └─ LearningScreen
       ├─ DiscoveryFeed (FlatList com snap vertical)
-      │    ├─ cabeçalho ── TopBar      ("Éon" + ⚙︎, uma linha)
-      │    │             └─ WorldPulse (UM item por entrada)
-      │    └─ DiscoveryPost[] (uma viewport cada: imagem + título + Ler →)
+      │    ├─ post 0 ── DiscoveryPost (foto desde o topo + atmosfera forte)
+      │    │          └─ POR CIMA: TopBar ("Éon" + ⚙︎) + WorldPulse
+      │    └─ posts 1… ── DiscoveryPost (uma viewport cada, atmosfera discreta)
       └─ leitura: CuriosityReader (tela cheia, por cima de tudo)
 ```
 
@@ -332,8 +365,8 @@ dia para o outro. A memória disso é um contador de sessão (ref), não save.
 Um só componente (`header/WorldPulse.tsx`), com a identidade de cada tipo numa
 tabela — não em `if`:
 
-- **faixa de 3 px** no topo na cor do tipo: verde (mundo vivo agora), ouro
-  (marco), violeta (descoberta). A ambiental não tem acento: é o dia comum, e a
+- **faixa de 3 px** no topo na cor do tipo: laranja (mundo vivo agora),
+  laranja escuro (marco e descoberta). A ambiental não tem acento: é o dia comum, e a
   hierarquia precisa mostrar que vale menos que uma novidade real;
 - **linha de status**: ponto que respira devagar (1,4 s, nunca some) só na
   notícia real; ponto parado na ambiental; `✦` na conquista; `!` na descoberta;
@@ -436,15 +469,18 @@ A conta toda vive em `presentation/feedLayout.ts`, **pura e testada** —
   respeita as bordas, por dois recuos: `recuoTopo` (safe top) e `recuoBase`
   (safe bottom + `ESPACO_ACTION_BAR`) — título, preview e CTA nunca ficam
   escondidos atrás da barra flutuante.
-- **Nenhum padding no conteúdo da lista.** A safe area do topo mora dentro do
-  cabeçalho e embaixo não há padding: é isso que faz o fim da rolagem coincidir
-  **exatamente** com a última parada do snap (há teste para essa invariante). Um
-  `paddingBottom` aqui empurraria tudo e o último post nunca encaixaria.
-- **Snap por offsets, não por intervalo.** O cabeçalho (Éon + World Pulse) tem
-  altura própria, medida no `onLayout`, que desalinharia um `snapToInterval` a
-  partir do segundo post. A parada `0` é de propósito: é a abertura da sessão.
-  `decelerationRate="fast"` + `disableIntervalMomentum` encaixam sem prender e
-  sem pular dois de uma vez.
+- **A primeira curiosidade é a própria tela.** O cabeçalho (Éon + World Pulse)
+  não é mais um bloco acima dela: flutua SOBRE o post 0, cuja foto começa no topo
+  físico da tela. É irmão do post, não filho — um toque no World Pulse cai no
+  cabeçalho e não abre a curiosidade.
+- **Snap simples, sem termo de cabeçalho.** Como o cabeçalho não ocupa espaço
+  próprio, todo post começa em `k × viewport` (`paradasDoFeed`). A altura medida
+  do cabeçalho só serve ao post 0: até onde a atmosfera fica densa e onde o chip
+  do tema desce. `decelerationRate="fast"` + `disableIntervalMomentum` encaixam
+  sem prender e sem pular dois de uma vez.
+- **Nenhum padding no conteúdo da lista:** com posts de uma viewport cada, o fim
+  da rolagem coincide exatamente com a última parada (há teste). Feed vazio: o
+  cabeçalho volta a pousar no fundo da paleta, acima de "Você descobriu tudo".
 - **Virtualizado** porque o catálogo vai crescer e cada item é uma fotografia de
   tela cheia: `FlatList` com `getItemLayout` (altura conhecida, sem medição nem
   salto), `windowSize` 3 e 2 por lote. O post é `memo` e o `renderItem` é
@@ -462,19 +498,52 @@ A conta toda vive em `presentation/feedLayout.ts`, **pura e testada** —
   constante, `ALFA_NA_EMENDA`, e chegam na divisão com exatamente o mesmo
   escuro. Há teste para essa invariante, que é fácil de perder de vista ao
   mexer nos valores.
-- **Do World Pulse para a primeira foto o fade é da PALETA, não preto.** O
-  primeiro post troca o degradê escuro do alto por uma ponte de 108 px que
-  dissolve `fundoFeed` na fotografia (`comAlfa`, em `shared/theme/cor.ts`) — a
-  imagem já está lá embaixo, então a foto parece nascer de dentro da interface.
-  Os dois overlays do alto são exclusivos: um **ou** o outro, nunca somados, para
-  o primeiro post não escurecer duas vezes. Com paleta clara a ponte é clara;
-  com escura, escura — há teste percorrendo as seis.
 - **Nada disso mexe no snap.** Todos os overlays são `position: absolute` dentro
-  do post, que já tem altura fixa: zero altura nova, zero spacer. O cabeçalho
-  perdeu o `paddingBottom` para a foto encostar no Pulse — e **não** há overlap
-  negativo de propósito: `onLayout` mede a altura sem a margem, então um
-  `marginBottom: -16` deslocaria os posts sem mudar `alturaCabecalho` e o snap
-  erraria por exatamente esse tanto.
+  do post, que já tem altura fixa: zero altura nova, zero spacer.
+
+#### A cor atmosférica
+
+Cada curiosidade pode declarar no catálogo `corAtmosfera: '#RRGGBB'` — o
+**ambiente** da capa, escolhido a olho junto com a imagem. É ela que funde
+cabeçalho, World Pulse e fotografia numa composição só.
+
+```
+TOPO    → corAtmosfera (escurecida)   post 0: forte, onde flutuam Éon e o Pulse
+                                       posts 1…: discreta, nascendo da emenda preta
+RODAPÉ  → sempre preto                 é ele que garante a leitura do título
+CHIP    → cor do TEMA                  identidade do assunto; não é a atmosfera
+```
+
+- **Nunca calculada no aparelho.** Nenhuma análise de pixel: o app só lê a string
+  do catálogo. Zero custo por imagem, e a cor mais frequente de uma foto
+  raramente é a mais bonita — a escolha é editorial.
+- **`resolverAtmosfera`** (`presentation/atmosfera.ts`, pura) devolve a `base`
+  (cadastrada) e o `topo` (a base escurecida). Sem cor cadastrada — ou com uma
+  inválida —, cai na cor da capa do tema: curiosidade antiga não quebra, e o
+  validador do catálogo acusa o formato errado.
+- **Contraste garantido, não torcido:** `escurecerAte` (`shared/theme/cor.ts`)
+  baixa os canais, mantendo o matiz, até a luminância relativa (WCAG) caber em
+  0,1 — texto branco sobre o topo fica acima de 7:1, mesmo com um amarelo-claro
+  cadastrado. "Éon" e a engrenagem ficam brancos sobre a atmosfera, e a barra de
+  status fica clara enquanto o feed está à vista (a coleção de Conquistas e a
+  leitura devolvem a da paleta; o `StatusBar` empilha).
+- **A emenda entre posts continua preta no ponto de contato.** A atmosfera do
+  post seguinte só aparece logo abaixo: cada swipe muda o ambiente sem riscar
+  uma linha colorida na divisão.
+- **World Pulse: contaminação sutil.** Superfície e textos seguem os tokens do
+  tema (é o que garante leitura em qualquer combinação — tema claro ou escuro
+  com floresta verde). A atmosfera entra na borda
+  e num brilho suave e, na notícia ambiental (que não tem cor semântica), na
+  faixa, no ponto e no fundo do ícone. Os laranjas dos tipos com significado
+  continuam sendo o que são.
+- **Não vai para o save:** é conteúdo editorial. Mudar a cor no catálogo muda a
+  tela na próxima abertura.
+
+**Na web, o degradê é outro arquivo.** `shared/ui/Gradient.tsx` usa
+`experimental_backgroundImage`, que o react-native-web descarta em silêncio — na
+web nenhum degradê aparecia. `Gradient.web.tsx` desenha o mesmo degradê como
+`background-image` CSS; o Metro escolhe um ou outro pela plataforma, e o do
+iPhone não mudou.
 - **O chip do tema usa a cor do próprio tema** (`CAPA_DO_TEMA`), não um token da
   interface: trocar a paleta no laboratório **não** repinta os chips, porque
   identidade de conteúdo não é identidade de interface. O `gap` interno já é o
@@ -508,17 +577,45 @@ A conta toda vive em `presentation/feedLayout.ts`, **pura e testada** —
   `experimental_backgroundImage` do React Native 0.86 em vez de uma biblioteca
   nova. Trocar por `expo-linear-gradient` um dia é mexer num arquivo só.
 
-## O mundo e o aparelho (app/index.tsx)
+## O mundo e o Discovery (app/index.tsx)
 
-Não há mais abas irmãs. **O mundo é a tela-base**, sempre montada e sempre no
-layout; o feed abre **por cima** dele, como um aparelho que o jogador tira do
-bolso.
+**Mundo e Discovery são superfícies persistentes, e a navegação entre elas usa
+uma transição horizontal animada. O `WorldMap` permanece montado durante essa
+navegação. Um único progresso visual também dirige o seletor da ActionBar.**
 
 ```
+MUNDO                               DISCOVERY
+[tela]  ←──── slide horizontal ────→  [tela]
+
 AppScreen
-├── camada do mundo   (fluxo normal: WorldMap + barra de ações + avisos)
-└── LearningOverlay   (absoluteFill por cima; fechado, é invisível e intocável)
+├── camada do mundo   (Animated.View: recua 10% — parallax)
+├── LearningOverlay   (Animated.View: espera à direita, desliza por cima)
+└── ActionBar         (fixa; só o seletor laranja viaja)
 ```
+
+- **Um valor, três movimentos.** `useProgressoDaNavegacao` (`shared/ui/`) cria
+  o shared value 0 → 1. Dele saem o `translateX` do Discovery (largura → 0), o
+  do Mundo (0 → −10% da largura) e o do seletor da ActionBar (item 0 → item 1),
+  além da cor dos ícones. A matemática é pura e testada (`shared/ui/navegacao.ts`);
+  em qualquer instante os três estão na mesma fração do caminho.
+- **Uma fonte de verdade para cada coisa:** `aprenderAberto` (estado React) é o
+  DESTINO, e é ele que decide toque e acessibilidade; o shared value é só o
+  CAMINHO visual até lá. Nunca se lê `.value` para decidir JSX.
+- **Só `translateX`, 280 ms, `Easing.out(cubic)`.** Sai rápido, desacelera ao
+  chegar, sem mola. O Mundo **não** muda de opacidade: opacidade num pai do Skia
+  obrigaria o iOS a compor o mapa fora da tela a cada quadro — e com o Discovery
+  opaco na frente, nem se veria.
+- **Inverter no meio** substitui a animação a partir da posição atual, com
+  duração proporcional ao que falta (a volta tem a mesma velocidade da ida).
+  Nada de fila, bloqueio ou debounce: trinta toques são trinta substituições.
+- **O seletor é UM elemento.** Um `Animated.View` absoluto por baixo dos ícones
+  — um retângulo laranja de 32×30, só o bastante para destacar o ícone — que
+  viaja de um lado ao outro, em vez de cada item pintar o próprio fundo (que
+  montava de um lado e desmontava do outro).
+- **A barra é um controle pequeno do mundo**, não uma cápsula de sistema:
+  100×44 pt, grafite com fio de 1 pt em laranja escuro, raio 10 (não pílula) e
+  sem sombra. Itens de 44×36 com toque de 48×44 (`hitSlop` até a borda: no iOS
+  o toque não passa do limite da barra). Igual nos dois temas.
 
 - **O `WorldMap` nunca desmonta e nunca sai do layout.** Nada de `display: 'none'`
   nele: era isso que fazia a superfície do Skia voltar vazia e o mapa aparecer
@@ -526,14 +623,27 @@ AppScreen
   abrir e fechar o feed não refaz o terreno, não recria as `SkImage`, não
   recalcula os caminhos, não recarrega sprites e não reinicia a câmera.
 - **A barra de ações** (`shared/ui/ActionBar.tsx`) é uma cápsula flutuante
-  centralizada na borda de baixo, com dois ícones: ◉ mundo e ▯ celular. **Ela é a
+  centralizada na borda de baixo, com dois ícones: ◉ mundo e a carta do Discovery. **Ela é a
   única navegação entre as duas telas.** Vale para o app inteiro: é renderizada por último em
   `app/index.tsx`, acima do mundo, do aparelho e das janelas, e nunca some. Por
-  isso o feed e a leitura reservam `ESPACO_ACTION_BAR` no rodapé.
-  O celular fica no meio de propósito — é de lá que o feed cresce, e
-  `centroDoItem()` devolve esse ponto para a animação (a barra é quem sabe o
-  próprio layout). O item ativo (`ativo`) mostra onde o jogador está: mundo ou
-  aparelho. Os ícones são provisórios (`shared/ui/icons.ts`).
+  isso o feed e a leitura reservam `ESPACO_ACTION_BAR` no rodapé. A cápsula não
+  desliza com as páginas; o `ativo` (o destino lógico) serve ao leitor de tela.
+- **UI moderna + micro-ícones em pixel art.** Um ícone em `shared/ui/icons.ts`
+  pode ser texto (o globo ◉, por enquanto) ou uma imagem (a carta do
+  Discovery, `assets/ui/Letter_Discovery`, 14×14). Imagem é desenhada **como
+  foi feita**: sem tint, sem cor animada — quem mostra o ativo é o seletor
+  passando por trás; o sprite fica parado. O tamanho é `TAMANHO_DO_SPRITE` =
+  56/3 pt: com arte de 14 px, dá 56 px exatos nas telas 3x (cada pixel da arte
+  vira um bloco 4×4). Nas telas 2x (iPhone 11, XR, SE) não existe múltiplo
+  inteiro, e a versão @2x sai por vizinho-mais-próximo, com colunas levemente
+  desiguais. Na web, que usa o arquivo base (a arte intacta),
+  `imageRendering: 'pixelated'` impede o navegador de suavizar.
+  **Para trocar outro ícone:** exporte o PNG, rode
+  `scripts/gerar-icone-ui.ps1 -Origem <png> -Nome <nome> -Escala3x <n>` (com
+  `TAMANHO_DO_SPRITE × 3 = lado da arte × n`) e aponte o ícone em
+  `icons.ts` para `assets/ui/<nome>.png`.
+- **Toque na barra:** só o item esmaece (`opacity` 0,7). Nada de fundo, halo
+  ou sombra ao segurar — o seletor é irmão do item, então não é afetado.
 - **As configurações só abrem de dentro do aparelho**, pelo ⚙︎ da linha do topo
   do feed (`onConfiguracoes`). O mapa não tem botão para elas. O
   `SettingsMenu` é renderizado depois do `LearningOverlay` para a janela ficar
@@ -541,36 +651,39 @@ AppScreen
 - **As janelas são controladas pela composição.** `SettingsMenu` e `LearnMenu`
   não carregam mais o próprio botão: recebem `aberto`/`onFechar`, e `app/index.tsx`
   guarda qual painel está aberto (um de cada vez).
-- **`LearningOverlay`** é o aparelho. Fica **sempre montado** — fechado, ele só
-  some (opacidade 0 e `pointerEvents: 'none'`), o que preserva o que já foi
-  aprendido e evita medir o feed de novo a cada abertura.
-- **A animação** é um shared value só, de 0 a 1 (`withTiming`, `Easing.out`).
-  Dele saem, por interpolação: `scaleX`/`scaleY` partindo do tamanho exato do
-  botão, `borderRadius` de 64 a 30 e a opacidade do conteúdo entrando entre 35 %
-  e 85 % do percurso — assim não se vê texto esticado. O ponto de crescimento é
-  um `transformOrigin` calculado a partir da posição real do botão. **Só
-  transform e opacidade: nenhum layout durante o movimento.**
+- **`LearningOverlay`** é o Discovery. Fica **sempre montado** — fechado, ele só
+  espera fora da tela, à direita, com `pointerEvents: 'none'`. Isso preserva a
+  posição vertical do feed entre idas e vindas e evita medir tudo de novo. Ele
+  não anima nada sozinho: só lê o progresso que a composição lhe passa.
+- **A câmera também sobrevive:** o mapa nunca remonta, então zoom, pan e foco
+  ficam onde a pessoa os deixou.
 - **Alcance e acessibilidade andam juntos.** Com o feed aberto, a camada do mundo
   recebe `pointerEvents="none"` + `accessibilityElementsHidden` +
   `importantForAccessibility="no-hide-descendants"`; fechado, o overlay recebe o
   mesmo tratamento. O que não está à vista não recebe dedo nem leitor de tela.
-- **Ao terminar de fechar, o mapa precisa reenviar a cena.** `LearningOverlay`
-  avisa por `onFechado`, a composição incrementa `despertarMapa`, e o `WorldMap`
-  chama `repintar()`. Veja "Por que o mapa voltava em branco" para o porquê.
+- **Ao terminar de voltar ao Mundo, o mapa precisa reenviar a cena.**
+  `useProgressoDaNavegacao` avisa por `onFechado`, a composição incrementa
+  `despertarMapa`, e o `WorldMap` chama `repintar()`. Veja "Por que o mapa
+  voltava em branco" para o porquê. **Continua obrigatório com o slide**: a
+  correção resolveu um bug real em aparelho e não é redundante só porque a
+  animação mudou.
 - **`onFechado` significa exatamente uma coisa:** houve uma transição real de
   aberto para fechado e a animação dela chegou ao fim. Duas defesas garantem isso,
   e as duas importam:
   1. o efeito guarda a direção anterior num `ref` e **só anima em transição
-     real** — re-rodar por troca de identidade de prop não faz nada. Sem essa
-     saída, um `withTiming(0)` com o progresso já em 0 termina com
-     `finished === true` e passa por fechamento, o que realimentaria
+     real** (`planejarTransicao`) — re-rodar por troca de identidade de prop não
+     faz nada. Sem essa saída, um `withTiming(0)` com o progresso já em 0 termina
+     com `finished === true` e passa por fechamento, o que realimentaria
      render → efeito → repaint;
-  2. a callback compara o **destino daquela animação** (`destino === 0`), não o
+  2. a callback compara o **destino daquela animação** (`avisaFechado`), não o
      `aberto` do render. Inverter no meio substitui a animação, e a substituída
      chega com `finished === false`.
-- Por isso as ações que a composição passa ao aparelho (`onFechar`, `onFechado`,
-  `onConfiguracoes`) e a `origem` são **memoizadas com identidade fixa**: a
-  corretude não pode depender do React Compiler, que pode desistir em silêncio.
+  As duas decisões são funções puras, e um teste as dirige por um simulador da
+  semântica do `withTiming` — inclusive 30 e 31 toques seguidos (um aviso só
+  quando a última volta ao Mundo termina; nenhum quando termina no Discovery).
+- Por isso as ações que a composição passa (`onFechar`, `onFechado`,
+  `onConfiguracoes`) são **memoizadas com identidade fixa**: a corretude não
+  pode depender do React Compiler, que pode desistir em silêncio.
 
 ## O que é salvo e o que é recalculado
 
@@ -908,12 +1021,64 @@ antes desta versão existir, e anunciá-la ao abrir seria mentir o momento.
   densidade do aparelho, e o banner a exibe a 64 pt — cada pixel da arte cai
   inteiro na tela, sem o borrão de uma ampliação suavizada. A moldura é 2 pt
   maior que a arte porque, no React Native, a borda come a largura por dentro.
-- O ouro (`OURO_DE_CONQUISTA`, em `shared/theme/cor.ts`) é identidade de
-  recompensa: igual em todas as paletas, e o mesmo do rótulo do World Pulse.
+- O destaque de recompensa é o laranja da marca (`accent` nos detalhes,
+  `accentLegivel` no texto), o mesmo nos dois temas e o mesmo do World Pulse.
 
-**Para criar uma conquista nova:** uma regra em `engine/regras.ts` e uma entrada
-em `data/achievements.ts`. O tipo do catálogo exige texto e arte para cada id —
-esquecer é erro de compilação, não um banner vazio.
+**Para criar uma conquista nova:**
+
+1. uma regra em `engine/regras.ts`;
+2. a arte: exporte **um** PNG 64×64 e rode
+   `scripts/gerar-sprite-conquista.ps1 -Origem <png> -Nome <nome>` — ele gera os
+   seis arquivos (64 pt e 128 pt, em 1x/2x/3x) por vizinho-mais-próximo;
+3. uma entrada em `data/achievements.ts`.
+
+O tipo do catálogo exige texto e as duas artes para cada id — esquecer é erro de
+compilação, não um banner vazio. (O arquivo de 128 pt a 1x é idêntico ao de
+64 pt a 2x; o export guarda um só e os dois apontam para ele.)
+
+### Três lugares, três papéis
+
+```
+AchievementToast   → a celebração, no instante do desbloqueio (qualquer tela)
+World Pulse        → a vitrine, na próxima entrada no feed (uma vez)
+AchievementsScreen → a coleção permanente da jornada (quando a pessoa quiser)
+```
+
+Nenhum dos três guarda estado próprio de conquista: todos leem o mesmo
+`desbloqueadas` de `useAchievements`. A coleção não comemora — quem faz isso é o
+banner; ela é o registro.
+
+### A coleção (AchievementsScreen)
+
+- **Acesso normal, não dev:** Configurações → **Conquistas** (o primeiro botão da
+  janela, com o progresso "1/1"). Configurações só **dispara** `onConquistas`;
+  ela não importa `achievements`. Quem decide que tela abrir é a composição.
+- **Configurações fecha, a coleção abre**, e o `‹` volta para onde a pessoa estava
+  (mundo ou feed). Nada fica empilhado.
+- **Camada de tela cheia, e não `Window`:** a janela embrulha o conteúdo num
+  `ScrollView`, e a `FlatList` da coleção lá dentro perderia a virtualização —
+  justamente o que deixa a coleção crescer para dezenas de itens.
+- **É projeção, não estado:** `montarColecao(ORDEM_DAS_CONQUISTAS, desbloqueadas)`.
+  Não existe uma segunda lista para a tela, então recomeçar a jornada bloqueia
+  tudo na hora e a hidratação desbloqueia o que veio do save. O save não mudou.
+- **Lista vertical, como a de um jogo** (`FlatList`, uma coluna). Cada linha:
+  a arte 64×64 numa moldura quadrada à esquerda; à direita o estado
+  (DESBLOQUEADA / BLOQUEADA), o nome e a frase. Cabeçalho com "Marcos da sua
+  jornada", contador "1 de 1 desbloqueadas" e barrinha laranja — do catálogo
+  real, nunca escritos à mão. Não há detalhe: a linha já mostra tudo.
+- **Desbloqueada:** a arte como foi feita, moldura laranja, nome e frase.
+  **Bloqueada:** a silhueta (`imagemBloqueada`), "???" e "Ainda não
+  descoberta." — sem cadeado, sem revelar nome nem condição. Isso já deixa
+  espaço para conquistas secretas sem campo novo.
+- **A silhueta é pixel art também**, gerada pelo
+  `scripts/gerar-sprite-conquista.ps1` junto com a arte (`<nome>-bloqueada`):
+  a mesma imagem sem cor, em três tons baixos entre o grafite e o cinza da
+  marca. Para uma silhueta desenhada à mão, basta substituir os três arquivos.
+- **A linha junta catálogo e jornada** (`ConquistaNaLista`: id, título,
+  descrição, imagem, imagemBloqueada, desbloqueada). O `desbloqueada` vem
+  sempre da coleção — nunca é um campo do catálogo.
+- **UI moderna, sprite retrô:** fontes, bordas e botões seguem os tokens da
+  paleta; só a arte é pixel art.
 
 ## A jornada consolida o mundo
 
@@ -1409,34 +1574,60 @@ Learning → influências → composição (app/index.tsx) → WorldGrowthEvent 
   `learning` (e de `shared/domain`, que os dois compartilham); o mundo só entende
   influência → evento.
 
-## Laboratório de paletas (temporário, só dev)
+## Identidade e tema (Claro / Escuro / Automático)
 
-Enquanto a identidade visual não está decidida, o modo desenvolvedor tem um
-seletor de paletas: Configurações → seção Desenvolvedor → **Paleta da
-interface**. Trocar muda a interface na hora, sem recarregar.
+A identidade oficial é pequena: **grafite + laranja + branco + preto + cinza**,
+e o vermelho só para perigo. O laboratório de seis paletas acabou e foi removido.
 
-**É só apresentação.** Não entra no save da jornada, não mexe no mundo, na
-câmera nem no Skia — e pode ser removido inteiro quando a identidade final for
-escolhida (`paletas.ts`, `PaletteDevTools.tsx` e a store em `colors.ts`).
+```
+MARCA (shared/theme/marca.ts)   → as sete cores brutas, e nenhuma outra
+  #26252C grafite   #C66320 laranja escuro   #F27927 laranja
+  #000000 preto     #FFFFFF branco           #9BADB7 cinza
+  #E5484D perigo (exceção semântica)
+        ↓
+temaClaro / temaEscuro (temas.ts) → tokens semânticos, derivados da marca
+        ↓
+useColors()                        → o que os componentes leem
+```
 
-- **Os componentes não sabem qual paleta está ativa.** Eles leem os mesmos
-  tokens de sempre (`bg`, `ink`, `barraAtivo`, `perigo`…); a paleta troca os
-  valores por trás dos nomes. Nada de `ButtonVioleta` nem `if (paleta === …)`.
-- **`paletas.ts` são só dados** (sem React, testáveis fora do app); `colors.ts`
-  tem a store e os hooks. A store é um `useSyncExternalStore` de dez linhas —
-  não precisa envolver a árvore num provider novo.
-- **Só a paleta Atual segue o claro/escuro do aparelho.** Ela é a referência A/B
-  e continua idêntica, barra de status inclusive. As em teste são fixas de
-  propósito: escolher uma escura num aparelho em modo claro precisa mostrar a
-  paleta escura, e não metade de cada.
-- **Cor de tema educacional não é cor de interface.** `astro`, `hist`, `geo` e
-  `nat` seguem a legibilidade do fundo (claro/escuro), não a personalidade da
-  paleta — identidade do conteúdo é outro assunto.
-- **O perigo continua vermelho em todas.** O tom muda para contrastar, mas
-  "Recomeçar jornada" nunca vira pêssego.
+- **Claro e escuro são a mesma identidade**, não duas paletas: o laranja, a
+  barra (grafite, fio e seletor laranja) e o perigo são iguais nos dois. Muda o
+  chão: branco com grafite no claro, grafite com preto no escuro.
+- **Nenhum hex novo.** Todo token é uma cor da marca, a marca com alfa
+  (`comAlfa`) ou uma mistura entre duas cores da marca (`misturar`, ex.: o
+  painel escuro é grafite com 6% de branco). Há teste conferindo isso token a
+  token.
+- **Componentes pedem papel, não cor:** `ink`, `muted`, `line`, `accent`,
+  `accentStrong`, `accentLegivel`, `accentTexto`, `perigo`… Fora de `marca.ts`,
+  nenhum componente de interface tem cor literal (há uma auditoria por grep).
+  O que continua com cor própria é conteúdo: biomas do mapa, cores dos temas
+  educacionais (`CAPA_DO_TEMA`), `corAtmosfera` das curiosidades e sprites.
+  O branco sobre fotografia vem de `MARCA.branco`: ali quem manda é a foto.
+- **Contraste medido, não chutado** (WCAG, com teste): texto branco sobre o
+  laranja fica em 2,6:1, então o botão primário usa **texto grafite** (5,5:1).
+  O laranja escuro puro como texto sobre branco fica em 4,0:1 e o branco sobre
+  o `#E5484D` puro em 3,9:1 — por isso o laranja-texto do claro e o fundo do
+  botão destrutivo são a mesma cor com 10% de preto (4,8 e 4,7:1). Derivados,
+  não cores novas.
+
+**Aparência** (Configurações → Aparência): `'system' | 'light' | 'dark'`.
+
+- **Automático** (padrão) segue o iOS ao vivo — `useColorScheme` (o `app.json`
+  tem `userInterfaceStyle: automatic`). **Claro** e **Escuro** ignoram o sistema.
+  Trocar é imediato: a store é um `useSyncExternalStore`, e só repinta quem lê
+  cor — o mundo, o terreno, o Skia, a câmera e o feed não são recriados.
+- **É preferência do APP, não da jornada.** Mora em `@eon/preferences`
+  (`persistence/preferencias.ts`), longe do `@eon/save`: não sobe a versão do
+  save e **"Recomeçar jornada" não a toca**. Escritas em fila, como as do save.
+  Valor estranho no disco vira Automático.
+- **Sem piscar tema errado:** a splash nativa fica segurada (`_layout`) até o
+  `AppScreen` ler save e preferência juntos; a aparência é aplicada antes do
+  primeiro render de verdade.
+- **Barra de status:** acompanha o tema efetivo (ícones claros no escuro,
+  escuros no claro). Com o feed à vista ela fica clara sobre a atmosfera da
+  foto; a coleção de Conquistas e a leitura devolvem a do tema.
 - **O mapa não muda.** Terreno, sprites e caminhos têm a própria paleta
-  (`world/render/palette.ts`), e as fotos dos cards não levam filtro: o branco
-  sobre a imagem escurecida continua fixo, porque ali a cor é da foto.
+  (`world/render/palette.ts`) — nada de tint nem filtro por tema.
 
 ## Interface sobre o mapa
 

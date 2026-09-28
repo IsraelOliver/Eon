@@ -1,6 +1,6 @@
 {
   "name": "eon",
-  "main": "expo-router/entry",
+  "main": "index",
   "version": "1.0.0",
   "dependencies": {
     "@expo/ui": "~57.0.18",
@@ -39,7 +39,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "postinstall": "setup-skia-web public"
   },
   "private": true
 }

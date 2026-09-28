@@ -2,23 +2,27 @@ import { Image } from 'expo-image';
 import { memo } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
+import { comAlfa } from '@/shared/theme/cor';
+import { MARCA } from '@/shared/theme/marca';
 import { Gradient } from '@/shared/ui/Gradient';
 
 import { NOMES_DE_TEMA } from '../engine/themes';
 import type { CuriosityEntry } from '../data/curiosities';
+import { resolverAtmosfera } from '../presentation/atmosfera';
 import { CAPA_DO_TEMA } from '../presentation/coverTheme';
 import {
-  ALTURA_DA_PONTE, ALTURA_DO_TOPO, DEGRADE_DA_BASE, DEGRADE_DO_TOPO, paradasDaPonte,
+  ALTURA_DO_TOPO, DEGRADE_DA_BASE, FADE_ATMOSFERICO, paradasDaAtmosfera, paradasDoTopo,
 } from '../presentation/degradeDoPost';
 import { tamanhoDoTitulo } from '../presentation/feedLayout';
 
 /**
- * O texto do post vive sempre sobre fotografia escurecida, então é branco nos
- * dois modos (claro e escuro). Por isso não sai de `shared/theme/colors.ts` e
- * não muda com a paleta do laboratório — a foto é que manda aqui.
+ * O texto do post vive sempre sobre fotografia escurecida, então é o branco da
+ * marca nos dois temas: aqui quem manda é a foto, não o tema. Tudo sai de
+ * `MARCA` — nenhum hex solto neste arquivo.
  */
-const BRANCO = '#ffffff';
-const BRANCO_FRACO = 'rgba(255,255,255,0.8)';
+const BRANCO = MARCA.branco;
+const BRANCO_FRACO = comAlfa(MARCA.branco, 0.8);
+const SOMBRA_DO_TEXTO = comAlfa(MARCA.preto, 0.5);
 
 type Props = {
   curiosidade: CuriosityEntry;
@@ -27,13 +31,11 @@ type Props = {
   recuoTopo: number;
   recuoBase: number;
   /**
-   * O primeiro post nasce colado no World Pulse, então o alto dele dissolve a
-   * COR DA INTERFACE, não uma sombra preta. Os outros encontram o degradê
-   * escuro do post de cima.
+   * Só no PRIMEIRO post: quanto do alto o cabeçalho (Éon + World Pulse) ocupa,
+   * flutuando sobre a foto. A atmosfera fica densa até ali, e o chip do tema
+   * desce para baixo dele. Nos outros posts, ausente.
    */
-  primeiro?: boolean;
-  /** `fundoFeed` da paleta ativa: a cor de onde a primeira fotografia nasce. */
-  corDaInterface?: string;
+  alturaDoCabecalho?: number;
   onLer: () => void;
 };
 
@@ -50,12 +52,16 @@ type Props = {
  * botões aninhados dizendo a mesma coisa.
  */
 function Post({
-  curiosidade, altura, recuoTopo, recuoBase, primeiro = false, corDaInterface, onLer,
+  curiosidade, altura, recuoTopo, recuoBase, alturaDoCabecalho, onLer,
 }: Props) {
   const janela = useWindowDimensions();
   const capa = curiosidade.capa;
   const tema = CAPA_DO_TEMA[curiosidade.tema];
   const fonte = tamanhoDoTitulo(janela.width);
+  // Só leitura do catálogo: nenhuma análise de imagem, em momento algum.
+  const atmosfera = resolverAtmosfera(curiosidade);
+  const primeiro = alturaDoCabecalho !== undefined;
+  const alturaDaAtmosfera = (alturaDoCabecalho ?? 0) + FADE_ATMOSFERICO;
 
   return (
     <Pressable
@@ -84,25 +90,36 @@ function Post({
             </View>
           )}
 
-          {/* O alto, num bloco próprio: sem `absoluteFill`, para a sombra viver
-              só na faixa de cima e não lavar a fotografia inteira.
-              Os dois overlays nunca se somam — um OU o outro. */}
-          {primeiro && corDaInterface ? (
-            <View style={[styles.ponte, { height: ALTURA_DA_PONTE }]} pointerEvents="none">
-              <Gradient paradas={paradasDaPonte(corDaInterface)} />
+          {/* O alto, num bloco próprio: sem `absoluteFill`, para a atmosfera
+              viver só na faixa de cima e não lavar a fotografia inteira.
+              Primeiro post: atmosfera FORTE, onde flutuam Éon e o World Pulse.
+              Os outros: atmosfera discreta, nascendo da emenda escura.
+              Nunca os dois juntos. */}
+          {primeiro ? (
+            <View style={[styles.topoDegrade, { height: alturaDaAtmosfera }]} pointerEvents="none">
+              <Gradient
+                paradas={paradasDaAtmosfera(atmosfera.topo, (alturaDoCabecalho ?? 0) / alturaDaAtmosfera)}
+              />
             </View>
           ) : (
             <View style={[styles.topoDegrade, { height: ALTURA_DO_TOPO }]} pointerEvents="none">
-              <Gradient paradas={DEGRADE_DO_TOPO} />
+              <Gradient paradas={paradasDoTopo(atmosfera.topo)} />
             </View>
           )}
 
+          {/* O rodapé é sempre preto: é ele que garante a leitura do título. */}
           <Gradient paradas={DEGRADE_DA_BASE} />
 
           {/* O chip usa a cor do PRÓPRIO tema: identidade de conteúdo não muda
               quando a paleta da interface muda. O `gap` já é o lugar do sprite
               pixel art que vai entrar antes do nome. */}
-          <View style={[styles.chip, { top: recuoTopo, backgroundColor: tema.de }]}>
+          <View
+            style={[
+              styles.chip,
+              // No primeiro post, logo abaixo do World Pulse — nunca por baixo dele.
+              { top: primeiro ? (alturaDoCabecalho ?? 0) + 10 : recuoTopo, backgroundColor: tema.de },
+            ]}
+          >
             <Text style={styles.chipTexto}>
               {NOMES_DE_TEMA[curiosidade.tema].toUpperCase()}
             </Text>
@@ -138,12 +155,11 @@ export const DiscoveryPost = memo(Post);
 
 const styles = StyleSheet.create({
   // Sem raio e sem margem: o post é a tela.
-  post: { width: '100%', justifyContent: 'flex-end', backgroundColor: '#0b0f14' },
+  post: { width: '100%', justifyContent: 'flex-end', backgroundColor: MARCA.grafite }, // enquanto a foto carrega
 
   // Overlays do alto: absolutos, então não acrescentam altura nenhuma ao post
   // e a conta do snap continua igual.
   topoDegrade: { position: 'absolute', top: 0, left: 0, right: 0 },
-  ponte: { position: 'absolute', top: 0, left: 0, right: 0 },
 
   simbolo: {
     position: 'absolute',
@@ -151,7 +167,7 @@ const styles = StyleSheet.create({
     top: '24%',
     fontSize: 260,
     lineHeight: 280,
-    color: 'rgba(255,255,255,0.09)',
+    color: comAlfa(MARCA.branco, 0.09),
   },
 
   chip: {
@@ -162,7 +178,7 @@ const styles = StyleSheet.create({
     gap: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
+    borderColor: comAlfa(MARCA.branco, 0.28),
     paddingVertical: 5,
     paddingHorizontal: 10,
   },
@@ -174,14 +190,14 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
     color: BRANCO,
     // Garante leitura mesmo sobre uma fotografia clara.
-    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowColor: SOMBRA_DO_TEXTO,
     textShadowRadius: 12,
   },
   preview: {
     fontSize: 15,
     lineHeight: 21,
     color: BRANCO_FRACO,
-    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowColor: SOMBRA_DO_TEXTO,
     textShadowRadius: 8,
   },
   cta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
@@ -191,7 +207,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: BRANCO,
     letterSpacing: 0.3,
-    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowColor: SOMBRA_DO_TEXTO,
     textShadowRadius: 8,
   },
 });
