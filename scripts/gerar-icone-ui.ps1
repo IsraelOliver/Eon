@@ -6,18 +6,20 @@
 #     -Origem "C:\caminho\meu-icone.png" -Nome "meu-icone" -Escala3x 4
 #
 # -Escala3x: quantos px de tela cada pixel da arte ocupa no iPhone 3x. Tem de
-# bater com a caixa da ActionBar: arte de N px numa caixa de S pt => S*3 = N*Escala3x.
+# bater com a caixa onde ele aparece: arte de N px numa caixa de S pt => S*3 = N*Escala3x.
 #
 # Escreve em assets/ui/:  <nome>.png, <nome>@2x.png, <nome>@3x.png
 # A origem pode ser o próprio <nome>.png de assets/ui: ele é lido para a memória
 # antes de qualquer gravação, e o base só é copiado quando a origem é outra.
 #
-# Hoje: Letter_Discovery, 14x14, numa caixa de 56/3 pt (~18,7 pt) —
-# `TAMANHO_DO_SPRITE`, na ActionBar — com `contain`. Nas telas 3x isso dá
-# EXATAMENTE 4 px de tela por pixel da arte (-Escala3x 4), sem ampliação em
-# tempo de execução. Nas telas 2x (iPhone 11, XR, SE) são 2,67 px: não existe
-# múltiplo inteiro, então a versão @2x é feita por vizinho-mais-próximo —
-# nítida, com colunas de pixel levemente desiguais.
+# Hoje:
+# - Letter_Discovery, 14x14, numa caixa de 56/3 pt (~18,7 pt) —
+#   `TAMANHO_DO_SPRITE`, na ActionBar — com `contain` (-Escala3x 4). Nas telas
+#   3x dá EXATAMENTE 4 px de tela por pixel da arte. Nas telas 2x (iPhone 11,
+#   XR, SE) são 2,67 px: não existe múltiplo inteiro, então a versão @2x é feita
+#   por vizinho-mais-próximo — nítida, com colunas levemente desiguais.
+# - gear_configuration, 22x22, numa caixa de 22 pt no TopBar (-Escala3x 3):
+#   blocos exatos de 2x2 e 3x3 nas duas densidades.
 #
 # O arquivo base (1x) é a arte ORIGINAL, intacta: nenhum iPhone é 1x, mas a web
 # (que não escolhe densidade) usa justamente este.

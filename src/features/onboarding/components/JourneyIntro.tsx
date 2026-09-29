@@ -5,14 +5,14 @@ import { useColors } from '@/shared/theme/colors';
 import { Button } from '@/shared/ui/Button';
 
 /**
- * Boas-vindas de uma jornada nova, por cima do mundo já carregado.
+ * Boas-vindas ao Mundo, na primeira visita depois do primeiro aprendizado.
  *
- * O mapa continua visível atrás de propósito: é o que dá sentido à primeira
- * frase. Enquanto está aberta, é a única coisa que aceita toque — o fundo
+ * O mapa continua visível atrás de propósito: é nele que o conhecimento acabou
+ * de deixar a primeira marca. Enquanto está aberta, é a única coisa que aceita toque — o fundo
  * escurecido cobre a tela inteira, e `accessibilityViewIsModal` tira o resto da
  * árvore de acessibilidade.
  */
-export function JourneyIntro({ onComecar }: { onComecar: () => void }) {
+export function JourneyIntro({ onContinuar }: { onContinuar: () => void }) {
   const c = useColors();
 
   return (
@@ -25,11 +25,11 @@ export function JourneyIntro({ onComecar }: { onComecar: () => void }) {
         <Text style={[styles.titulo, { color: c.ink }]} accessibilityRole="header">
           Este é o seu mundo.
         </Text>
-        <Text style={[styles.destaque, { color: c.ink }]}>Aprenda para vê-lo crescer.</Text>
-        <Text style={[styles.subtexto, { color: c.muted }]}>
-          Antes da sua primeira descoberta, você ainda pode escolher outro mundo nas configurações.
+        <Text style={[styles.destaque, { color: c.ink }]}>
+          Seu conhecimento começou a transformar este mundo. Continue aprendendo e veja no que ele
+          se torna.
         </Text>
-        <Button label="Começar jornada" variant="primary" onPress={onComecar} style={styles.botao} />
+        <Button label="Continuar" variant="primary" onPress={onContinuar} style={styles.botao} />
       </View>
     </Animated.View>
   );
@@ -61,6 +61,5 @@ const styles = StyleSheet.create({
   },
   titulo: { fontSize: 28, fontWeight: '700', lineHeight: 34 },
   destaque: { fontSize: 18, lineHeight: 25 },
-  subtexto: { fontSize: 14, lineHeight: 20 },
   botao: { marginTop: 8 },
 });

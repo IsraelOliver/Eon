@@ -82,11 +82,13 @@ src/
       components/AchievementToast.tsx → banner global que desce do topo
       components/AchievementsScreen.tsx → a coleção (aberta por Configurações)
     onboarding/              → boas-vindas de uma jornada nova
-      regra.ts               → quando a apresentação aparece (pura)
+      regra.ts               → quando as boas-vindas ao Mundo aparecem (pura)
       components/JourneyIntro.tsx → o cartão por cima do mundo
     settings/                → configurações do app
       components/
-        SettingsMenu.tsx     → janela "Configurações": Conquistas, Aparência (+ Desenvolvedor)
+        SettingsMenu.tsx     → tela "Configurações": Conquistas, Aparência, Sobre (+ Desenvolvedor), zona de perigo
+        AboutScreen.tsx      → "Sobre o Éon": descrição, versão (expo-constants), créditos
+        TopoDaTela.tsx       → o topo ‹ + título das telas de Configurações
       hooks/
         useDevMode.ts        → modo desenvolvedor: 5 toques secretos liga/desliga
   persistence/               → o save (camada de composição, como app/)
@@ -290,17 +292,32 @@ as **Aprendidas** (tela futura), *o que já faz parte da minha jornada*; e o
 
 ### O topo do feed (World Pulse)
 
-**Nada no topo é fixo.** `LearningHeader` é o primeiro filho do `ScrollView`:
-rolar para baixo sobe o "Éon", sobe o World Pulse e deixa os cards passando.
-Não existe barra sticky nesta tela.
+**O header é uma região própria, fixa, acima da timeline.** `LearningHeader` é
+irmão do `DiscoveryFeed`, não parte dele: o header termina, a timeline começa.
 
-**A linha do nome (`TopBar`) são três colunas.** Espaçador invisível de 44 px,
-título com `flex: 1` e `textAlign: 'center'`, engrenagem de 44 px. As duas pontas
-com a mesma largura são o que deixa o "Éon" no centro da **tela**, e não no
-centro do que sobrou. A engrenagem é **ícone nu** — sem círculo, sem borda, sem
-fundo. (Antes isto era `justifyContent: 'center'` mais um filho `position:
-absolute`; o filho absoluto não ocupa espaço no fluxo e o resultado quebrava em
-duas linhas.)
+```
+┌─────────────────────────────┐  fundoFeed (tema), safe area de cima
+│ Éon                      ⚙  │  TopBar: 44 pt, Éon à esquerda, engrenagem à direita
+│ ● MUNDO AGORA               │  WorldPulse: rótulo pequeno
+│ Nenhuma construção…      ~  │  manchete + ícone na coluna da engrenagem
+├─────────────────────────────┤  fio `line` (hairline): fim do header
+│ [ HISTÓRIA ]                │  timeline: o chip já é conteúdo do post
+```
+
+- **Uma peça só:** mesma superfície (`fundoFeed`), mesma margem lateral (20 pt,
+  a mesma do chip e do título dos posts). A engrenagem e o ícone do Pulse
+  dividem a coluna da direita; o texto do Pulse trunca/desliza e nunca empurra
+  a engrenagem.
+- **World Pulse sem card:** nada de caixa, borda, faixa ou sombra. Quem separa as
+  duas seções é o espaço e o contraste tipográfico.
+- **Só cores do tema.** O header não usa a atmosfera da foto — nem de fundo, nem
+  de detalhe. A barra de status segue o tema, como qualquer tela.
+- **Grafite estrutura, laranja identifica.** Éon, o rótulo (MUNDO AGORA) e a
+  manchete são `ink`. O laranja aparece em poucos pontos: o sinal de status
+  (`accent`; marcos em `accentStrong`), a engrenagem (o próprio sprite) e o
+  controle do ícone do Pulse — quadrado 36 pt, raio 10, fundo `panel`, fio
+  `accentStrong`, símbolo `accent`. O fio que fecha o header é o `neutral`
+  (cinza) a 50%.
 
 #### A vitrine viva da jornada
 
@@ -450,8 +467,8 @@ feed apareceria em outra posição. A sincronização acontece quando a leitura 
 recém-aprendida continua legível até quem está lendo decidir sair.
 
 ```
-┌──────────────┐  altura = a JANELA INTEIRA (sem margem, sem raio)
-│ [ GEOLOGIA ] │  ← chip na cor do próprio tema, abaixo da status bar
+┌──────────────┐  altura = a TIMELINE INTEIRA (sem margem, sem raio)
+│ [ GEOLOGIA ] │  ← chip na cor do próprio tema, logo abaixo do header
 │              │
 │  fotografia  │  ← expo-image, 'cover', fill absoluto, de borda a borda
 │ ░░░░░░░░░░░░ │  ← Gradient progressivo: nada no alto, firme só na base
@@ -464,23 +481,17 @@ recém-aprendida continua legível até quem está lendo decidir sair.
 A conta toda vive em `presentation/feedLayout.ts`, **pura e testada** —
 `medidasDoFeed`, `posicaoDoPost`, `paradasDoFeed`.
 
-- **Full-bleed:** o post é a tela. Altura = `janela.height` inteira; a fotografia
-  passa **por baixo** da status bar e da ActionBar de propósito. Só o texto
-  respeita as bordas, por dois recuos: `recuoTopo` (safe top) e `recuoBase`
-  (safe bottom + `ESPACO_ACTION_BAR`) — título, preview e CTA nunca ficam
-  escondidos atrás da barra flutuante.
-- **A primeira curiosidade é a própria tela.** O cabeçalho (Éon + World Pulse)
-  não é mais um bloco acima dela: flutua SOBRE o post 0, cuja foto começa no topo
-  físico da tela. É irmão do post, não filho — um toque no World Pulse cai no
-  cabeçalho e não abre a curiosidade.
-- **Snap simples, sem termo de cabeçalho.** Como o cabeçalho não ocupa espaço
-  próprio, todo post começa em `k × viewport` (`paradasDoFeed`). A altura medida
-  do cabeçalho só serve ao post 0: até onde a atmosfera fica densa e onde o chip
-  do tema desce. `decelerationRate="fast"` + `disableIntervalMomentum` encaixam
-  sem prender e sem pular dois de uma vez.
-- **Nenhum padding no conteúdo da lista:** com posts de uma viewport cada, o fim
-  da rolagem coincide exatamente com a última parada (há teste). Feed vazio: o
-  cabeçalho volta a pousar no fundo da paleta, acima de "Você descobriu tudo".
+- **Full-bleed dentro da timeline:** o post ocupa toda a área abaixo do header.
+  Altura = a altura MEDIDA da lista (`onLayout`; antes da primeira medida, uma
+  estimativa que vale um quadro). A fotografia passa **por baixo** da ActionBar
+  de propósito. Só o texto respeita as bordas, por dois recuos: `recuoTopo` (14
+  pt abaixo do header) e `recuoBase` (safe bottom + `ESPACO_ACTION_BAR`).
+- **Snap simples:** o header está fora da lista, então todo post começa em
+  `k × altura da timeline` (`paradasDoFeed`). `decelerationRate="fast"` +
+  `disableIntervalMomentum` encaixam sem prender e sem pular dois de uma vez.
+- **Nenhum padding no conteúdo da lista:** com posts da altura da lista, o fim
+  da rolagem coincide exatamente com a última parada. Feed vazio: "Você
+  descobriu tudo" ocupa a timeline, sob o mesmo header.
 - **Virtualizado** porque o catálogo vai crescer e cada item é uma fotografia de
   tela cheia: `FlatList` com `getItemLayout` (altura conhecida, sem medição nem
   salto), `windowSize` 3 e 2 por lote. O post é `memo` e o `renderItem` é
@@ -488,10 +499,10 @@ A conta toda vive em `presentation/feedLayout.ts`, **pura e testada** —
   `recyclingKey` do `expo-image` evita a imagem antiga aparecer numa view
   reaproveitada. Sem `removeClippedSubviews`: em iOS ele já causou sumiço de
   conteúdo em listas com imagem.
-- **A sequência não tem cortes secos.** Cada post leva **dois** degradês: um no
-  alto (14% da viewport) e o de sempre na base — os dois em
-  `presentation/degradeDoPost.ts`. O do alto também garante contraste ao chip do
-  tema sobre qualquer fotografia.
+- **A sequência não tem cortes secos.** Cada post depois do primeiro leva
+  **dois** degradês: um no alto (14% do post) e o de sempre na base — os dois
+  em `presentation/degradeDoPost.ts`. O primeiro encosta no header, não num
+  post: não há emenda, então o alto dele é só fotografia.
 - **O segredo da emenda é o casamento, não o degradê.** Ter sombra dos dois
   lados não basta: com a base terminando em 0.93 e o topo começando em 0.45, o
   olho via a divisão **clarear** — um degrau. Por isso os dois saem da mesma
@@ -504,12 +515,12 @@ A conta toda vive em `presentation/feedLayout.ts`, **pura e testada** —
 #### A cor atmosférica
 
 Cada curiosidade pode declarar no catálogo `corAtmosfera: '#RRGGBB'` — o
-**ambiente** da capa, escolhido a olho junto com a imagem. É ela que funde
-cabeçalho, World Pulse e fotografia numa composição só.
+**ambiente** da capa, escolhido a olho junto com a imagem. Ela vive só DENTRO
+do post: o header nunca a usa.
 
 ```
-TOPO    → corAtmosfera (escurecida)   post 0: forte, onde flutuam Éon e o Pulse
-                                       posts 1…: discreta, nascendo da emenda preta
+TOPO    → corAtmosfera (escurecida)   posts 1…: discreta, nascendo da emenda preta
+                                       post 0: nenhuma (encosta no header)
 RODAPÉ  → sempre preto                 é ele que garante a leitura do título
 CHIP    → cor do TEMA                  identidade do assunto; não é a atmosfera
 ```
@@ -523,19 +534,11 @@ CHIP    → cor do TEMA                  identidade do assunto; não é a atmosf
   validador do catálogo acusa o formato errado.
 - **Contraste garantido, não torcido:** `escurecerAte` (`shared/theme/cor.ts`)
   baixa os canais, mantendo o matiz, até a luminância relativa (WCAG) caber em
-  0,1 — texto branco sobre o topo fica acima de 7:1, mesmo com um amarelo-claro
-  cadastrado. "Éon" e a engrenagem ficam brancos sobre a atmosfera, e a barra de
-  status fica clara enquanto o feed está à vista (a coleção de Conquistas e a
-  leitura devolvem a da paleta; o `StatusBar` empilha).
+  0,1 — o alto do post fica escuro o bastante mesmo com um amarelo-claro
+  cadastrado.
 - **A emenda entre posts continua preta no ponto de contato.** A atmosfera do
   post seguinte só aparece logo abaixo: cada swipe muda o ambiente sem riscar
   uma linha colorida na divisão.
-- **World Pulse: contaminação sutil.** Superfície e textos seguem os tokens do
-  tema (é o que garante leitura em qualquer combinação — tema claro ou escuro
-  com floresta verde). A atmosfera entra na borda
-  e num brilho suave e, na notícia ambiental (que não tem cor semântica), na
-  faixa, no ponto e no fundo do ícone. Os laranjas dos tipos com significado
-  continuam sendo o que são.
 - **Não vai para o save:** é conteúdo editorial. Mudar a cor no catálogo muda a
   tela na próxima abertura.
 
@@ -642,12 +645,24 @@ AppScreen
   `scripts/gerar-icone-ui.ps1 -Origem <png> -Nome <nome> -Escala3x <n>` (com
   `TAMANHO_DO_SPRITE × 3 = lado da arte × n`) e aponte o ícone em
   `icons.ts` para `assets/ui/<nome>.png`.
+- **Tocar de novo no destino ativo faz a ação daquele lugar** (`app/index.tsx`):
+  destino diferente navega; o mesmo destino não navega. Mundo ativo → a câmera
+  anima até a visão geral (`WorldMap.visaoGeral` → `useMapCamera.mostrarTudo`:
+  zoom mínimo, centralizado, 650 ms). Discovery ativo → o feed rola até o topo
+  (`LearningOverlay.voltarAoTopo` → `DiscoveryFeed`, `scrollToOffset` na ref da
+  FlatList). Os dois são contadores, como o `despertar`: nada remonta, nada é
+  recriado, e um pedido antigo não se repete quando o componente monta.
 - **Toque na barra:** só o item esmaece (`opacity` 0,7). Nada de fundo, halo
   ou sombra ao segurar — o seletor é irmão do item, então não é afetado.
-- **As configurações só abrem de dentro do aparelho**, pelo ⚙︎ da linha do topo
-  do feed (`onConfiguracoes`). O mapa não tem botão para elas. O
-  `SettingsMenu` é renderizado depois do `LearningOverlay` para a janela ficar
-  por cima do painel.
+- **As configurações só abrem de dentro do aparelho**, pela engrenagem (sprite `gear_configuration`, 22 pt, sem tint) da linha do topo
+  do feed (`onConfiguracoes`). O mapa não tem botão para elas.
+- **Configurações é uma tela cheia, não um modal** (zIndex 35): cobre o feed e
+  a barra, tem o próprio `‹` no topo (fecha e volta ao feed) e não tem botão
+  "Fechar". Poucas caixas: Conquistas é uma linha com fio (`1/1 ›`), Aparência
+  é o rótulo com o segmentado, e a **zona de perigo** fica no fim, separada por
+  fio e respiro (`flexGrow`). "Sobre o Éon" abre por cima dela e o `‹` volta
+  para Configurações. A confirmação de recomeçar continua sendo um
+  `Window`, agora por cima da tela. O `✦` do modo dev fica no pé da tela.
 - **As janelas são controladas pela composição.** `SettingsMenu` e `LearnMenu`
   não carregam mais o próprio botão: recebem `aberto`/`onFechar`, e `app/index.tsx`
   guarda qual painel está aberto (um de cada vez).
@@ -904,28 +919,40 @@ prioridade ao long press (inspeção técnica do modo dev); o tap só dispara se
 falhar. Abrir Aprender, abrir Configurações, recriar o mundo ou um novo destaque
 fecham a seleção.
 
-## A apresentação da jornada
+## O primeiro uso e as boas-vindas ao Mundo
 
-Uma jornada nova é apresentada uma vez, por cima do mundo já carregado — o mapa
-fica visível atrás, que é o que dá sentido à frase "Este é o seu mundo.".
+O primeiro uso começa pelo conhecimento, não pelo mapa:
 
 ```
-aprendidas === 0  &&  !onboardingConcluida  &&  !world.gerando  →  aparece
+1. abre no DISCOVERY          (aprenderAberto nasce true enquanto aprendidas === 0)
+2. aprende a 1ª curiosidade   → o mundo cresce (regra de sempre)
+3. World Pulse                → "Algo apareceu no seu mundo." (notícia especial)
+4. 1ª visita ao Mundo         → boas-vindas, uma vez; depois, foco da câmera + banner
 ```
 
-- **Depois de dispensada, não volta.** `onboardingConcluida` é gravado no save,
-  então fechar o app sem aprender nada não a traz de volta.
-- **Pertence à jornada, não à semente.** Trocar de mundo antes da primeira
-  descoberta não a faz reaparecer; **recomeçar a jornada**, sim — junto com o
-  perfil vazio e o mundo novo.
-- **Quem já aprendeu nunca a vê**, mesmo que o save diga o contrário: se existe
-  conhecimento, a jornada já começou.
-- **Não aparece durante uma recriação** (`world.gerando`): primeiro o mundo novo
-  fica pronto, depois a pessoa é apresentada a ele.
-- Enquanto está aberta é a **única coisa que aceita toque** — mapa, barra,
-  aparelho e janelas ficam fora de alcance, e `accessibilityViewIsModal` tira o
-  resto da árvore de acessibilidade. "Começar jornada" só fecha a apresentação:
-  não abre o feed.
+```
+aprendidas > 0  &&  !onboardingConcluida  &&  !world.gerando  &&  no Mundo  →  aparece
+```
+
+- **Nenhum campo novo no save.** "Já aprendeu" é o perfil; `onboardingConcluida`
+  (SaveV2) passou a significar "as boas-vindas ao Mundo já foram vistas". A
+  migração antiga (`onboardingConcluida = aprendidas > 0`) já deixa quem aprendeu
+  de fora — o fluxo de quem já passou do primeiro aprendizado não muda.
+- **Abrir no Discovery não anima nada:** `useProgressoDaNavegacao` nasce do valor
+  inicial, e o WorldMap está montado atrás, como sempre. O Pulse dessa primeira
+  abertura é escolhido ao montar (`aparelhoEstavaAberto` nasce `false`).
+- **A notícia especial é do World Pulse**, não um tutorial: o primeiro
+  crescimento da jornada (com as boas-vindas ainda pendentes) vira UMA notícia,
+  "Algo apareceu no seu mundo.". Se o Discovery está aberto nesse instante (a
+  leitura cobre o feed), o Pulse troca para ela na hora.
+- **O foco da câmera e o banner esperam as boas-vindas** serem dispensadas: aí a
+  câmera vai até o que nasceu, à vista.
+- **Depois de vistas, não voltam** (`onboardingConcluida` vai para o save).
+  **Recomeçar a jornada** as traz de volta, junto com o perfil vazio.
+- **Não aparecem durante uma recriação** (`world.gerando`).
+- Enquanto estão abertas são a **única coisa que aceita toque**, e
+  `accessibilityViewIsModal` tira o resto da árvore de acessibilidade.
+  "Continuar" só as fecha.
 - A regra mora em `features/onboarding/regra.ts` (pura), e a composição só
   pergunta. O componente é `features/onboarding/components/JourneyIntro.tsx`.
 
@@ -1050,11 +1077,13 @@ banner; ela é o registro.
 
 ### A coleção (AchievementsScreen)
 
-- **Acesso normal, não dev:** Configurações → **Conquistas** (o primeiro botão da
-  janela, com o progresso "1/1"). Configurações só **dispara** `onConquistas`;
+- **Acesso normal, não dev:** Configurações → **Conquistas** (a primeira linha
+  da tela, com o progresso "1/1"). Configurações só **dispara** `onConquistas`;
   ela não importa `achievements`. Quem decide que tela abrir é a composição.
-- **Configurações fecha, a coleção abre**, e o `‹` volta para onde a pessoa estava
-  (mundo ou feed). Nada fica empilhado.
+- **A coleção abre por cima de Configurações** (zIndex 40 sobre 35), que fica
+  aberta embaixo. O `‹` da coleção fecha só ela e a pessoa volta para
+  Configurações; o voltar do Android segue a mesma ordem (o último a registrar
+  o `BackHandler` é atendido primeiro).
 - **Camada de tela cheia, e não `Window`:** a janela embrulha o conteúdo num
   `ScrollView`, e a `FlatList` da coleção lá dentro perderia a virtualização —
   justamente o que deixa a coleção crescer para dezenas de itens.
@@ -1654,11 +1683,11 @@ useColors()                        → o que os componentes leem
 
 ## Modo desenvolvedor
 
-- Ativação secreta: o pequeno `✦` no rodapé da janela Configurações. 5 toques
+- Ativação secreta: o pequeno `✦` no pé da tela Configurações. 5 toques
   seguidos (no máximo 1,5 s entre um e outro; se passar, a contagem recomeça)
   ativam; mais 5 desativam. O estado fica em `useDevMode` e **não é salvo**.
 - Com o modo ativo:
-  - a janela Configurações mostra a seção "Desenvolvedor": semente + "Gerar com
+  - a tela Configurações mostra a seção "Desenvolvedor": semente + "Gerar com
     esta semente", slider de nível do mar (gera de novo ao soltar) e legenda;
   - toque longo no mapa mostra no aviso de baixo o bioma, a altitude e a umidade
     do tile tocado (`useMapCamera.paraMapa` desfaz o zoom/deslocamento e

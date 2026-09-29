@@ -14,7 +14,13 @@ import type { AssuntoDoMundo } from '../domain/assunto';
 export type Icon = string | ImageSourcePropType;
 
 export const ICONS = {
-  gear: '⚙︎',
+  /**
+   * A engrenagem das Configurações (topo do Discovery): pixel art 22×22, com as
+   * próprias cores — nunca recebe tint. Gerada com `-Escala3x 3`.
+   */
+  gear: require('../../../assets/ui/gear_configuration.png'),
+  /** A mesma engrenagem com o miolo escuro: é a que contrasta sobre fundo claro. */
+  gearEscura: require('../../../assets/ui/gear_configuration-dark.png'),
   mundo: '◉',
   /**
    * O ícone que abre o Discovery: pixel art 14×14, desenhada com as próprias

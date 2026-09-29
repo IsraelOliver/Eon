@@ -1,4 +1,4 @@
-import { type ReactElement, useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -11,43 +11,49 @@ import { medidasDoFeed, paradasDoFeed, posicaoDoPost } from '../presentation/fee
 import { DiscoveryPost } from './DiscoveryPost';
 
 /**
- * Altura do cabeçalho antes da primeira medida (safe area + Éon + World Pulse).
- * Só vale por um quadro: o `onLayout` do próprio cabeçalho corrige logo depois.
+ * Quanto o header ocupa abaixo da safe area, só para estimar a timeline antes
+ * da primeira medida. Vale por um quadro: o `onLayout` da lista corrige logo depois.
  */
-const CABECALHO_ESTIMADO = 150;
+const HEADER_ESTIMADO = 110;
 
 type Props = {
   /** Só as ainda não descobertas — quem filtra é a tela. */
   curiosidades: readonly CuriosityEntry[];
-  /** Éon + World Pulse. Flutua sobre a primeira curiosidade e sobe com ela. */
-  cabecalho: ReactElement;
   onLer: (id: CuriosityId) => void;
+  /** Muda de valor para pedir a volta ao topo, rolando suave. `0` = nenhum pedido ainda. */
+  voltarAoTopo?: number;
 };
 
 /**
- * O Discovery Feed: uma descoberta por vez, ocupando a tela inteira.
+ * O Discovery Feed: a timeline, uma descoberta por vez, ocupando toda a área
+ * abaixo do header.
  *
- * **A primeira curiosidade é a própria tela.** O cabeçalho não é mais um bloco
- * acima dela: ele flutua SOBRE a foto, que começa no topo físico da tela, e a
- * atmosfera da curiosidade junta os dois numa composição só. Sem "interface em
- * cima, fotografia embaixo".
- *
- * Isso também simplificou o snap: como o cabeçalho não ocupa espaço próprio,
- * todo post começa num múltiplo exato da viewport (`paradasDoFeed`). A altura
- * medida do cabeçalho só serve para o PRIMEIRO post saber até onde deixar a
- * atmosfera densa e onde pôr o chip do tema.
+ * O header é uma região própria, fixa, FORA da lista: o header termina, a
+ * timeline começa. Cada post mede exatamente a altura da lista (medida com
+ * `onLayout`), então todo post começa num múltiplo exato dela (`paradasDoFeed`).
  *
  * **Nenhum padding no conteúdo da lista.** Com posts de uma viewport cada, o fim
  * da rolagem coincide exatamente com a última parada. Um padding quebraria isso.
  */
-export function DiscoveryFeed({ curiosidades, cabecalho, onLer }: Props) {
+export function DiscoveryFeed({ curiosidades, onLer, voltarAoTopo = 0 }: Props) {
+  const lista = useRef<FlatList<CuriosityEntry>>(null);
+
+  // Só rola a lista que já existe: nada remonta, nenhum estado do feed muda.
+  // O topo (0) é a primeira parada do snap, então a rolagem assenta nele.
+  const ultimoPedido = useRef(voltarAoTopo);
+  useEffect(() => {
+    if (voltarAoTopo === ultimoPedido.current) return;
+    ultimoPedido.current = voltarAoTopo;
+    lista.current?.scrollToOffset({ offset: 0, animated: true });
+  }, [voltarAoTopo]);
+
   const janela = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [alturaMedida, setAlturaMedida] = useState<number | null>(null);
-  const alturaDoCabecalho = alturaMedida ?? insets.top + CABECALHO_ESTIMADO;
+  const alturaDaTimeline = alturaMedida ?? janela.height - insets.top - HEADER_ESTIMADO;
 
   const { alturaDoPost, recuoTopo, recuoBase } = medidasDoFeed(
-    janela,
+    alturaDaTimeline,
     insets,
     ESPACO_ACTION_BAR,
   );
@@ -67,49 +73,29 @@ export function DiscoveryFeed({ curiosidades, cabecalho, onLer }: Props) {
   );
 
   const desenharItem = useCallback(
-    ({ item, index }: { item: CuriosityEntry; index: number }) => {
-      const post = (
-        <DiscoveryPost
-          curiosidade={item}
-          altura={alturaDoPost}
-          recuoTopo={recuoTopo}
-          recuoBase={recuoBase}
-          alturaDoCabecalho={index === 0 ? alturaDoCabecalho : undefined}
-          onLer={() => onLer(item.id)}
-        />
-      );
-      if (index !== 0) return post;
-
-      /*
-       * O primeiro post leva o cabeçalho POR CIMA, como irmão — não dentro do
-       * post. Assim um toque no World Pulse não abre a curiosidade: ele cai no
-       * cabeçalho, que não é o botão do post.
-       */
-      return (
-        <View style={{ height: alturaDoPost }}>
-          {post}
-          <View
-            style={[styles.sobreAFoto, { paddingTop: insets.top }]}
-            onLayout={(e) => setAlturaMedida(e.nativeEvent.layout.height)}
-          >
-            {cabecalho}
-          </View>
-        </View>
-      );
-    },
-    [alturaDoPost, recuoTopo, recuoBase, alturaDoCabecalho, cabecalho, insets.top, onLer],
+    ({ item, index }: { item: CuriosityEntry; index: number }) => (
+      <DiscoveryPost
+        curiosidade={item}
+        altura={alturaDoPost}
+        recuoTopo={recuoTopo}
+        recuoBase={recuoBase}
+        primeiro={index === 0}
+        onLer={() => onLer(item.id)}
+      />
+    ),
+    [alturaDoPost, recuoTopo, recuoBase, onLer],
   );
 
   return (
     <FlatList
+      ref={lista}
+      style={styles.lista}
+      onLayout={(e) => setAlturaMedida(e.nativeEvent.layout.height)}
       data={curiosidades}
       keyExtractor={(curiosidade) => curiosidade.id}
       renderItem={desenharItem}
       ListEmptyComponent={
-        // Sem curiosidade não há foto: o cabeçalho volta a pousar no fundo da
-        // paleta, como qualquer tela do app.
-        <View style={{ height: alturaDoPost, paddingTop: insets.top }}>
-          {cabecalho}
+        <View style={{ height: alturaDoPost }}>
           <TudoDescoberto recuoBase={recuoBase} />
         </View>
       }
@@ -144,7 +130,7 @@ function TudoDescoberto({ recuoBase }: { recuoBase: number }) {
 }
 
 const styles = StyleSheet.create({
-  sobreAFoto: { position: 'absolute', top: 0, left: 0, right: 0 },
+  lista: { flex: 1 },
   vazio: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 10 },
   vazioMarca: { fontSize: 48, lineHeight: 56 },
   vazioTitulo: { fontSize: 20, fontWeight: '700', textAlign: 'center' },

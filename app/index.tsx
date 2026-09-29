@@ -45,6 +45,8 @@ import { ICONS } from '@/shared/ui/icons';
 import { deslocamentoDoMundo } from '@/shared/ui/navegacao';
 import { useProgressoDaNavegacao } from '@/shared/ui/useNavegacao';
 
+/** A notícia do primeiro crescimento da jornada, no World Pulse. */
+const FRASE_DO_PRIMEIRO_CRESCIMENTO = 'Algo apareceu no seu mundo.';
 /** Quantas novidades recentes ficam na memória. O resto do mundo está no mapa. */
 const LIMITE_DE_NOTICIAS = 6;
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -109,16 +111,27 @@ export default function AppScreen() {
 function Jogo({ save }: { save: SaveData | null }) {
   const c = useColors();
   const [configAberto, setConfigAberto] = useState(false);
-  const [aprenderAberto, setAprenderAberto] = useState(false);
+  /**
+   * O primeiro uso começa no Discovery: enquanto a jornada não tem nenhum
+   * aprendizado, o app abre no feed, e não no Mundo. A navegação nasce já em 1
+   * (`useProgressoDaNavegacao` parte do valor inicial), então nada anima.
+   */
+  const [aprenderAberto, setAprenderAberto] = useState(
+    () => (save?.learning.perfil.aprendidas.length ?? 0) === 0,
+  );
   /** Sobe quando o feed acaba de sair da frente: o mapa reenvia a cena ao Skia. */
   const [despertarMapa, setDespertarMapa] = useState(0);
+  /** Sobe a cada toque no Mundo já ativo: a câmera anima até o mapa inteiro. */
+  const [visaoGeral, setVisaoGeral] = useState(0);
+  /** Sobe a cada toque no Discovery já ativo: o feed rola até o topo. */
+  const [voltarAoTopo, setVoltarAoTopo] = useState(0);
 
   const tela = useWindowDimensions();
   const world = useWorld(save?.world);
   const aprendizado = useLearning(save?.learning.perfil);
   /** Nasce só com o que está desbloqueado — a fila do banner começa vazia. */
   const conquistas = useAchievements(save?.achievements.desbloqueadas);
-  /** Sem save, a jornada é nova: a apresentação ainda não foi vista. */
+  /** Sem save, a jornada é nova: as boas-vindas ao Mundo ainda não foram vistas. */
   const [onboardingConcluida, setOnboardingConcluida] = useState(save?.onboardingConcluida ?? false);
   const dev = useDevMode();
 
@@ -133,7 +146,7 @@ function Jogo({ save }: { save: SaveData | null }) {
   const aoFecharAprender = useCallback(() => setDespertarMapa((n) => n + 1), []);
   const abrirConfiguracoes = useCallback(() => setConfigAberto(true), []);
   const fecharConfiguracoes = useCallback(() => setConfigAberto(false), []);
-  /** A coleção de conquistas. Aberta a partir de Configurações, que fecha antes. */
+  /** A coleção de conquistas. Abre POR CIMA de Configurações; fechar volta para lá. */
   const [conquistasAbertas, setConquistasAbertas] = useState(false);
   const abrirConquistas = useCallback(() => setConquistasAbertas(true), []);
   const fecharConquistas = useCallback(() => setConquistasAbertas(false), []);
@@ -223,6 +236,34 @@ function Jogo({ save }: { save: SaveData | null }) {
     if (doJogador.length === 0) return;
 
     const agora = Date.now();
+
+    /*
+     * O PRIMEIRO crescimento da jornada (a primeira curiosidade, antes da
+     * primeira visita ao Mundo) vira uma notícia só, especial. Se o Discovery
+     * está aberto — a pessoa acabou de aprender, a leitura cobre o feed —, o
+     * Pulse troca para ela já: é por ela que a pessoa descobre que o mundo mudou.
+     */
+    if (aprendizado.perfil.aprendidas.length === 1 && !onboardingConcluida) {
+      const especial = {
+        id: proximoIdDeNoticia.current++,
+        texto: FRASE_DO_PRIMEIRO_CRESCIMENTO,
+        assunto: assuntoDeCrescimento(doJogador[0]),
+        criadoEm: agora,
+        vista: aprenderAberto,
+      };
+      if (aprenderAberto) {
+        setPulso({
+          tipo: 'noticia',
+          categoria: 'progressao',
+          texto: especial.texto,
+          icone: especial.assunto,
+          quando: 'agora',
+        });
+      }
+      setNoticias((atuais) => [...atuais, especial].slice(-LIMITE_DE_NOTICIAS));
+      return;
+    }
+
     const novas = doJogador.map((elemento) => ({
       id: proximoIdDeNoticia.current++,
       texto: fraseDeCrescimento(elemento),
@@ -233,7 +274,7 @@ function Jogo({ save }: { save: SaveData | null }) {
 
     // Fila cronológica: a mais antiga na frente é a próxima a ser contada.
     setNoticias((atuais) => [...atuais, ...novas].slice(-LIMITE_DE_NOTICIAS));
-  }, [world.construcoes]);
+  }, [world.construcoes, aprendizado.perfil.aprendidas.length, onboardingConcluida, aprenderAberto]);
 
   /**
    * A ponte mundo → conquistas.
@@ -316,8 +357,12 @@ function Jogo({ save }: { save: SaveData | null }) {
   const vezAmbiental = useRef(0);
   const ultimaAmbiental = useRef<string | null>(null);
 
-  /** Direção mostrada por último: só a transição fechado → aberto conta. */
-  const aparelhoEstavaAberto = useRef(aprenderAberto);
+  /**
+   * Direção mostrada por último: só a transição fechado → aberto conta. Nasce
+   * `false` de propósito: no primeiro uso o app já abre no Discovery, e essa
+   * abertura também escolhe o seu Pulse.
+   */
+  const aparelhoEstavaAberto = useRef(false);
 
   useEffect(() => {
     const estava = aparelhoEstavaAberto.current;
@@ -372,14 +417,27 @@ function Jogo({ save }: { save: SaveData | null }) {
    */
   const [novidade, setNovidade] = useState({ id: 0, x: 0, y: 0, titulo: '', subtitulo: '' });
 
+  /**
+   * As boas-vindas ao Mundo: uma vez só, na primeira visita depois do primeiro
+   * aprendizado, e nunca no meio de um carregamento.
+   */
+  const mostrarIntro = deveMostrarIntroDaJornada({
+    aprendidas: aprendizado.perfil.aprendidas.length,
+    onboardingConcluida,
+    gerando: world.gerando,
+    noMundo: !aprenderAberto,
+  });
+
   const { destaque, consumirDestaque } = world;
   useEffect(() => {
-    // Com o aparelho aberto o mapa está coberto; espera o jogador voltar.
-    if (!destaque || aprenderAberto || world.gerando) return;
+    // Com o aparelho aberto o mapa está coberto; espera o jogador voltar. Com as
+    // boas-vindas na frente, espera a pessoa dispensá-las: aí a câmera vai até
+    // a novidade e o aviso aparece, à vista.
+    if (!destaque || aprenderAberto || world.gerando || mostrarIntro) return;
     setNovidade((n) => ({ id: n.id + 1, ...destaque }));
     setSelecao(null); // o foco automático assume a cena
     consumirDestaque();
-  }, [destaque, aprenderAberto, world.gerando, consumirDestaque]);
+  }, [destaque, aprenderAberto, world.gerando, mostrarIntro, consumirDestaque]);
 
   /**
    * Construção tocada: só estado de tela, nunca salvo. A ORIGEM dela, sim, é
@@ -404,13 +462,6 @@ function Jogo({ save }: { save: SaveData | null }) {
     if (aprenderAberto || configAberto || conquistasAbertas || world.gerando) setSelecao(null);
   }, [aprenderAberto, configAberto, conquistasAbertas, world.gerando]);
 
-  /** Boas-vindas de jornada nova: uma vez só, e nunca no meio de um carregamento. */
-  const mostrarIntro = deveMostrarIntroDaJornada({
-    aprendidas: aprendizado.perfil.aprendidas.length,
-    onboardingConcluida,
-    gerando: world.gerando,
-  });
-
   /**
    * Recomeçar: apaga conhecimento e mundo **juntos**. As duas mudanças saem no
    * mesmo evento, então o React as agrupa num render só, e o mundo novo nasce
@@ -419,13 +470,32 @@ function Jogo({ save }: { save: SaveData | null }) {
    */
   const recomecarJornada = useCallback(() => {
     aprendizado.reiniciar();
-    setOnboardingConcluida(false); // jornada nova, apresentação de volta
+    setOnboardingConcluida(false); // jornada nova, boas-vindas de volta
     world.novoMundo();
   }, [aprendizado, world]);
 
+  /*
+   * A regra da barra: tocar num destino DIFERENTE navega; tocar no destino já
+   * selecionado faz a ação daquele lugar. Mundo → enquadrar o mapa inteiro;
+   * Discovery → voltar ao topo do feed. Nenhuma das duas mexe na navegação.
+   */
   const acoes: readonly AcaoDaBarra[] = [
-    { chave: 'mundo', icone: ICONS.mundo, rotulo: 'Ver o mundo', onPress: fecharAprender },
-    { chave: 'discovery', icone: ICONS.discovery, rotulo: 'Abrir Aprender', onPress: abrirAprender },
+    aprenderAberto
+      ? { chave: 'mundo', icone: ICONS.mundo, rotulo: 'Ver o mundo', onPress: fecharAprender }
+      : {
+          chave: 'mundo',
+          icone: ICONS.mundo,
+          rotulo: 'Ver o mundo inteiro',
+          onPress: () => setVisaoGeral((n) => n + 1),
+        },
+    aprenderAberto
+      ? {
+          chave: 'discovery',
+          icone: ICONS.discovery,
+          rotulo: 'Voltar ao topo do Discovery',
+          onPress: () => setVoltarAoTopo((n) => n + 1),
+        }
+      : { chave: 'discovery', icone: ICONS.discovery, rotulo: 'Abrir Aprender', onPress: abrirAprender },
   ];
 
   /**
@@ -513,6 +583,7 @@ function Jogo({ save }: { save: SaveData | null }) {
             onLongPress={dev.ativo ? world.inspecionar : undefined}
             despertar={despertarMapa}
             foco={novidade.id > 0 ? novidade : null}
+            visaoGeral={visaoGeral}
             construcoes={world.construcoes}
             onSelecionar={setSelecao}
           />
@@ -545,6 +616,7 @@ function Jogo({ save }: { save: SaveData | null }) {
         onAprendido={aoAprender}
         onConfiguracoes={abrirConfiguracoes}
         pulso={pulso}
+        voltarAoTopo={voltarAoTopo}
       />
       <SettingsMenu
         aberto={configAberto}
@@ -580,12 +652,12 @@ function Jogo({ save }: { save: SaveData | null }) {
         seletor={{ progresso: navegacao, de: 'mundo', ate: 'discovery' }}
       />
 
-      {/* A coleção é tela cheia e cobre a barra: tem o próprio "voltar", que
-          devolve a pessoa para onde ela estava (mundo ou feed). */}
+      {/* A coleção é tela cheia e cobre a barra e as Configurações (de onde é
+          aberta): o "voltar" dela fecha só ela e devolve a pessoa para lá. */}
       <AchievementsScreen aberta={conquistasAbertas} colecao={colecao} onFechar={fecharConquistas} />
 
       {/* Por último: enquanto está aberta, é a única coisa que aceita toque. */}
-      {mostrarIntro && <JourneyIntro onComecar={() => setOnboardingConcluida(true)} />}
+      {mostrarIntro && <JourneyIntro onContinuar={() => setOnboardingConcluida(true)} />}
 
       {/* O banner de conquista vem DEPOIS de tudo: fica acima do mundo, do
           aparelho, das configurações e da apresentação. Não recebe toque. */}

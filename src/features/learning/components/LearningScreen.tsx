@@ -1,4 +1,3 @@
-import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -7,7 +6,6 @@ import { useColors } from '@/shared/theme/colors';
 import type { Aprendizado } from '../hooks/useLearning';
 import type { Curiosity, CuriosityId, LearningResult } from '../engine/types';
 import type { WorldPulseItem } from '../presentation/worldPulse';
-import { resolverAtmosfera } from '../presentation/atmosfera';
 import { paraDescobrir } from '../presentation/descoberta';
 import { CuriosityReader } from './CuriosityReader';
 import { DiscoveryFeed } from './DiscoveryFeed';
@@ -31,11 +29,8 @@ type Props = {
   pulso?: WorldPulseItem | null;
   /** A engrenagem do topo é o único caminho para as Configurações. */
   onConfiguracoes?: () => void;
-  /**
-   * O aparelho está aberto e a tela à vista. A tela fica montada mesmo fechada,
-   * então é isto que diz se ela pode mandar na barra de status.
-   */
-  visivel?: boolean;
+  /** Muda de valor para o feed rolar até o topo. Só passa adiante. */
+  voltarAoTopo?: number;
 };
 
 /**
@@ -46,7 +41,7 @@ type Props = {
  * tela própria de consulta.
  */
 export function LearningScreen({
-  aprendizado, onAprendido, onVerMundo, pulso = null, onConfiguracoes, visivel = false,
+  aprendizado, onAprendido, onVerMundo, pulso = null, onConfiguracoes, voltarAoTopo,
 }: Props) {
   const c = useColors();
   const [abertaId, setAbertaId] = useState<CuriosityId | null>(null);
@@ -86,32 +81,13 @@ export function LearningScreen({
       }
     : undefined;
 
-  /*
-   * A atmosfera do topo é a da PRIMEIRA curiosidade: é sobre ela que Éon e o
-   * World Pulse flutuam. Sem curiosidade (feed vazio), não há foto atrás e o
-   * cabeçalho volta a pousar no fundo da paleta.
-   */
-  const primeira = visiveis[0];
-  const atmosfera = primeira ? resolverAtmosfera(primeira) : null;
-
   return (
     <View style={[styles.tela, { backgroundColor: c.fundoFeed }]}>
-      {/*
-        * Com o feed à vista, o alto da tela é sempre fotografia escurecida — a
-        * atmosfera no primeiro post, a emenda escura nos outros —, então os
-        * ícones da barra de status ficam claros. A leitura e o mundo têm o
-        * próprio fundo: fora daqui, quem manda de novo é a paleta (_layout).
-        * O `StatusBar` empilha: desmontar este devolve o estilo anterior.
-        */}
-      {visivel && !aberta && atmosfera && <StatusBar style="light" />}
+      {/* O header termina, a timeline começa: duas regiões, uma acima da outra.
+          A barra de status segue o tema (_layout), como o header. */}
+      <LearningHeader onConfiguracoes={onConfiguracoes} pulso={pulso} />
 
-      <DiscoveryFeed
-        curiosidades={visiveis}
-        cabecalho={
-          <LearningHeader onConfiguracoes={onConfiguracoes} pulso={pulso} atmosfera={atmosfera} />
-        }
-        onLer={setAbertaId}
-      />
+      <DiscoveryFeed curiosidades={visiveis} onLer={setAbertaId} voltarAoTopo={voltarAoTopo} />
 
       {aberta && (
         <CuriosityReader

@@ -175,6 +175,21 @@ export function useMapCamera(largura: number, altura: number, aoMover?: () => vo
     [tela.width, tela.height, largura, altura, zoomMin, zoomMax, escala, x, y],
   );
 
+  /**
+   * Volta à visão geral: o zoom mínimo (o mapa inteiro na altura da tela),
+   * centralizado — o mesmo enquadramento de quando o mapa abre. Anima como o
+   * foco, para a pessoa ver o caminho de volta, em vez de saltar.
+   */
+  const mostrarTudo = useCallback(() => {
+    cancelAnimation(x); // qualquer inércia ou foco em curso perde a vez
+    cancelAnimation(y);
+    cancelAnimation(escala);
+    const suave = { duration: DURACAO_DO_FOCO, easing: Easing.inOut(Easing.cubic) };
+    escala.set(withTiming(zoomMin, suave));
+    x.set(withTiming((tela.width - largura * zoomMin) / 2, suave));
+    y.set(withTiming(0, suave));
+  }, [tela.width, largura, zoomMin, escala, x, y]);
+
   /** Pixels de arte → coordenadas da tela, com a câmera de AGORA. */
   const paraTela = (artX: number, artY: number) => ({
     x: x.get() + artX * escala.get(),
@@ -187,5 +202,5 @@ export function useMapCamera(largura: number, altura: number, aoMover?: () => vo
     y: (py - y.get()) / escala.get(),
   });
 
-  return { gesto, transformacao, paraMapa, paraTela, repintar, focarEm };
+  return { gesto, transformacao, paraMapa, paraTela, repintar, focarEm, mostrarTudo };
 }

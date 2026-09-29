@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming,
+  Easing, cancelAnimation, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming,
 } from 'react-native-reanimated';
 
 import { useColors, type Colors } from '@/shared/theme/colors';
-import { comAlfa } from '@/shared/theme/cor';
 import { ICONS_DO_PULSO } from '@/shared/ui/icons';
 
 import type { WorldPulseItem } from '../../presentation/worldPulse';
@@ -17,11 +16,12 @@ type Variante = 'progressao' | 'ambiental' | 'conquista' | 'descoberta';
  *
  * Os acentos são TOKENS da identidade, não cores: o laranja é "o mundo está vivo
  * agora", o laranja escuro é marco e descoberta. A notícia ambiental não tem
- * acento de propósito — é o dia comum, e a hierarquia precisa mostrar que ela
- * vale menos que uma novidade real.
+ * acento próprio — é o dia comum: o ponto dela é o laranja da identidade, mas
+ * quieto, sem respirar, e a hierarquia mostra que ela vale menos que uma
+ * novidade real.
  *
- * `descoberta` já tem a sua linha: quando os achados do mapa existirem, o card
- * está pronto para eles.
+ * `descoberta` já tem a sua linha: quando os achados do mapa existirem, o
+ * World Pulse está pronto para eles.
  */
 const ESTILO: Record<
   Variante,
@@ -33,105 +33,71 @@ const ESTILO: Record<
   descoberta: { rotulo: 'DESCOBERTA', marca: '!', acento: 'accentStrong' },
 };
 
-/** Canto reservado ao sprite pixel art (24–32 px) que vai substituir o glifo. */
-const ICONE = 32;
+/**
+ * O controle do ícone: quadrado arredondado, encostado na margem direita — a
+ * mesma borda da engrenagem. Menor que a altura do pulso (≈39), então o header
+ * não cresce por causa dele.
+ */
+const ICONE = 36;
 
 type Props = {
   /** O item desta entrada, escolhido pela composição quando o aparelho abriu. */
   item: WorldPulseItem | null;
-  /**
-   * A cor atmosférica da curiosidade sobre a qual o card flutua, ou `null` quando
-   * não há foto atrás (feed vazio). Contamina só detalhes — borda, brilho, e na
-   * notícia ambiental a faixa, o ponto e o ícone. Superfície e textos continuam
-   * nos tokens da paleta: é o que garante a leitura em qualquer combinação.
-   */
-  atmosfera?: string | null;
 };
 
 /**
  * O World Pulse: o mundo falando com quem abre o feed.
  *
- * Um card editorial compacto — faixa fina de cor no topo, linha de status,
- * manchete forte e um canto para o ícone. Menos "bolha" que os cards de
- * curiosidade (sombra curta, raio menor), porque ele é manchete, não pôster.
+ * É a segunda seção do header, não um card: rótulo pequeno com o sinal de
+ * status, a manchete logo abaixo e o ícone à direita, na coluna da
+ * engrenagem. Quem separa é o espaço e o contraste tipográfico — sem caixa,
+ * borda ou sombra em volta do pulso. As cores são só as do tema; nada vem da
+ * fotografia. O laranja aparece em poucos pontos: o sinal de status e o ícone.
  *
  * Mostra um item só, e não troca sozinho: a escolha vale até a próxima vez que
  * o aparelho abrir.
  */
-export function WorldPulse({ item, atmosfera = null }: Props) {
+export function WorldPulse({ item }: Props) {
   const c = useColors();
   if (!item) return <View style={styles.reserva} />;
 
   const variante: Variante = item.tipo === 'noticia' ? item.categoria : item.tipo;
   const estilo = ESTILO[variante];
   const acentoDoTipo = estilo.acento ? c[estilo.acento] : null;
-  /*
-   * A cor dos detalhes. Os tipos com significado (laranja "agora", laranja escuro
-   * de marco) mantêm o seu; a notícia ambiental, que não tem cor própria, veste a
-   * atmosfera da curiosidade.
-   */
-  const detalhe = acentoDoTipo ?? atmosfera;
-  const acento = detalhe ?? c.muted;
   const quando = item.tipo === 'noticia' && item.categoria === 'progressao' ? item.quando : null;
 
   return (
     <View
       accessible
       accessibilityLabel={`${estilo.rotulo}: ${'titulo' in item ? `${item.titulo}. ` : ''}${item.texto}`}
-      style={[
-        styles.sombra,
-        { backgroundColor: c.cartao, shadowColor: c.sombra },
-        // Sobre a foto, um brilho suave da atmosfera no lugar da sombra neutra.
-        atmosfera && { shadowColor: atmosfera, shadowOpacity: 0.45, shadowRadius: 14 },
-      ]}
+      style={styles.pulso}
     >
-      <View
-        style={[
-          styles.cartao,
-          {
-            backgroundColor: c.cartao,
-            borderColor: atmosfera ? comAlfa(atmosfera, 0.85) : c.line,
-          },
-        ]}
-      >
-        <View style={[styles.faixa, { backgroundColor: detalhe ?? c.line }]} />
-
-        <View style={styles.corpo}>
-          <View style={styles.textos}>
-            <View style={styles.rotuloLinha}>
-              <Marca tipo={estilo.marca} cor={acento} />
-              <Text style={[styles.rotulo, { color: acentoDoTipo ? c.accentLegivel : c.muted }]}>{estilo.rotulo}</Text>
-              {quando && <Text style={[styles.quando, { color: c.muted }]}>{quando}</Text>}
-            </View>
-            {item.tipo === 'noticia' ? (
-              <Manchete texto={item.texto} cor={c.ink} />
-            ) : (
-              // Conquista e descoberta têm duas linhas: nome forte e o que foi.
-              // Sem deslizar — elas cabem, e marco merece ser lido parado.
-              <>
-                <Text style={[styles.titulo, { color: c.ink }]} numberOfLines={1}>
-                  {item.titulo}
-                </Text>
-                <Text style={[styles.texto, { color: c.muted }]} numberOfLines={2}>
-                  {item.texto}
-                </Text>
-              </>
-            )}
-          </View>
-
-          <View
-            style={[
-              styles.icone,
-              { backgroundColor: detalhe ? comAlfa(detalhe, acentoDoTipo ? 0.12 : 0.3) : c.panel },
-            ]}
-          >
-            {/* Na ambiental o glifo fica na tinta da paleta: a atmosfera pode ser
-                escura demais para ser lida sobre a superfície. */}
-            <Text style={[styles.iconeTexto, { color: acentoDoTipo ? acento : c.ink }]}>
-              {ICONS_DO_PULSO[item.icone]}
-            </Text>
-          </View>
+      <View style={styles.textos}>
+        <View style={styles.rotuloLinha}>
+          {/* O sinal é identidade (laranja); o rótulo é estrutura (tinta). */}
+          <Marca tipo={estilo.marca} cor={acentoDoTipo ?? c.accent} />
+          <Text style={[styles.rotulo, { color: c.ink }]}>{estilo.rotulo}</Text>
+          {quando && <Text style={[styles.quando, { color: c.muted }]}>· {quando}</Text>}
         </View>
+        {item.tipo === 'noticia' ? (
+          <Manchete texto={item.texto} cor={c.ink} />
+        ) : (
+          // Conquista e descoberta: nome forte e o que foi, uma linha cada.
+          <>
+            <Text style={[styles.titulo, { color: c.ink }]} numberOfLines={1}>
+              {item.titulo}
+            </Text>
+            <Text style={[styles.texto, { color: c.muted }]} numberOfLines={1}>
+              {item.texto}
+            </Text>
+          </>
+        )}
+      </View>
+
+      {/* Superfície do tema, fio laranja escuro e símbolo laranja: parece um
+          controle do World Pulse, não um ícone solto. */}
+      <View style={[styles.icone, { backgroundColor: c.panel, borderColor: c.accentStrong }]}>
+        <Text style={[styles.iconeTexto, { color: c.accent }]}>{ICONS_DO_PULSO[item.icone]}</Text>
       </View>
     </View>
   );
@@ -158,40 +124,67 @@ function PontoVivo({ cor }: { cor: string }) {
   return <Animated.View style={[styles.ponto, { backgroundColor: cor }, estilo]} />;
 }
 
-/** Quanto tempo a frase descansa em cada ponta antes de deslizar. */
-const PAUSA_MS = 2000;
-/** Milissegundos por pixel. Devagar: é manchete, não painel de aeroporto. */
-const MS_POR_PIXEL = 34;
+/** Quanto a frase fica parada, alinhada, antes de cada volta. */
+const PAUSA_MS = 5000;
+/** Altura da linha da manchete — e do trilho, que não pode crescer. */
+const LINHA_DA_MANCHETE = 21;
+/** Velocidade do deslize: devagar, é manchete — não painel de aeroporto. */
+const PIXELS_POR_SEGUNDO = 35;
+/** O respiro entre o fim da frase e o começo da cópia dela. */
+const ESPACO_ENTRE_VOLTAS = 40;
+/**
+ * Largura da faixa onde a frase é medida e corre. Grande o bastante para
+ * qualquer manchete (e a cópia): é o que deixa o texto ter a largura NATURAL, sem "…".
+ */
+const FAIXA = 10000;
 
 /**
- * A manchete da notícia. Se cabe, fica parada. Se não cabe, vai e volta devagar,
- * com pausa longa nas pontas — sem cortar palavra e sem piscar.
+ * A manchete da notícia, como um ticker contínuo.
+ *
+ * Coube: fica parada. Não coube: espera 5 s, e a frase anda da direita para a
+ * esquerda; logo depois do fim dela, após um respiro, vem uma CÓPIA da frase.
+ * A volta termina quando a cópia chega exatamente onde a original começou —
+ * então a faixa é trocada de volta para 0, que desenha a mesma coisa (a
+ * original no lugar da cópia): nenhum salto, nenhuma ré. Espera 5 s e repete.
+ * Só a frase se move — o rótulo e o resto do Pulse ficam parados.
+ *
+ * O texto é medido numa faixa sem limite de largura. Dentro da largura do
+ * trilho o React Native o encolheria até caber, com "…", e o excesso medido
+ * seria sempre zero.
  */
 function Manchete({ texto, cor }: { texto: string; cor: string }) {
   const [larguraCaixa, setLarguraCaixa] = useState(0);
   const [larguraTexto, setLarguraTexto] = useState(0);
   const deslocamento = useSharedValue(0);
 
+  // Coube (ou ainda não foi medido): nada se move, e não há cópia.
+  const corre = larguraCaixa > 0 && larguraTexto > 0 && larguraTexto - larguraCaixa > 1;
+
   useEffect(() => {
-    const excesso = larguraTexto - larguraCaixa;
+    // Notícia nova (ou medida nova): sempre recomeça do início, parada.
+    cancelAnimation(deslocamento);
+    deslocamento.set(0);
+    if (!corre) return;
 
-    // Coube: nada se move. Também é o caso de antes da primeira medição.
-    if (larguraCaixa === 0 || excesso <= 0) {
-      deslocamento.set(0);
-      return;
-    }
-
-    const duracao = excesso * MS_POR_PIXEL;
+    // Uma volta = a frase inteira mais o respiro: a cópia pousa onde a original estava.
+    const volta = larguraTexto + ESPACO_ENTRE_VOLTAS;
     deslocamento.set(
       withRepeat(
         withSequence(
-          withDelay(PAUSA_MS, withTiming(-excesso, { duration: duracao, easing: Easing.linear })),
-          withDelay(PAUSA_MS, withTiming(0, { duration: duracao, easing: Easing.linear })),
+          withDelay(
+            PAUSA_MS,
+            withTiming(-volta, { duration: (volta / PIXELS_POR_SEGUNDO) * 1000, easing: Easing.linear }),
+          ),
+          // Troca instantânea para 0: a imagem é idêntica, então não se vê.
+          withTiming(0, { duration: 0 }),
         ),
         -1,
       ),
     );
-  }, [larguraCaixa, larguraTexto, deslocamento, texto]);
+  }, [corre, larguraTexto, deslocamento, texto]);
+
+  // Ao sair da tela, a animação infinita para junto.
+  useEffect(() => () => cancelAnimation(deslocamento), [deslocamento]);
 
   const corrida = useAnimatedStyle(() => ({
     transform: [{ translateX: deslocamento.value }],
@@ -199,9 +192,9 @@ function Manchete({ texto, cor }: { texto: string; cor: string }) {
 
   return (
     <View style={styles.trilho} onLayout={(e) => setLarguraCaixa(e.nativeEvent.layout.width)}>
-      <Animated.View style={[styles.corredor, corrida]}>
-        {/* `flexShrink: 0` é o que faz a medida ser a largura NATURAL da frase:
-            sem isso o texto encolheria para caber e nunca haveria deslocamento. */}
+      <Animated.View style={[styles.faixa, corrida]}>
+        {/* Em linha, sem limite: a caixa do texto abraça a frase, e o
+            `onLayout` devolve a largura natural dela. */}
         <Text
           numberOfLines={1}
           onLayout={(e) => setLarguraTexto(e.nativeEvent.layout.width)}
@@ -209,50 +202,56 @@ function Manchete({ texto, cor }: { texto: string; cor: string }) {
         >
           {texto}
         </Text>
+        {corre && (
+          // A cópia que fecha o loop. O leitor de tela já tem a frase no rótulo do Pulse.
+          <Text
+            numberOfLines={1}
+            accessible={false}
+            importantForAccessibility="no"
+            style={[styles.manchete, styles.copia, { color: cor }]}
+          >
+            {texto}
+          </Text>
+        )}
       </Animated.View>
     </View>
   );
 }
 
-const RAIO = 14;
-
 const styles = StyleSheet.create({
-  // Mesmo espaço do card, para o topo não pular no primeiro quadro da abertura.
-  reserva: { height: 76 },
-  // Sombra num embrulho sem `overflow`: com `overflow: hidden` o iOS a corta.
-  sombra: {
-    marginHorizontal: 14,
-    borderRadius: RAIO,
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
-  },
-  cartao: { borderRadius: RAIO, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
-  faixa: { height: 3 },
-  corpo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingTop: 11,
-    paddingBottom: 13,
-  },
-  textos: { flex: 1, gap: 5 },
-  rotuloLinha: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  // Mesma altura do pulso de uma linha, para o header não pular na abertura.
+  reserva: { height: 40 },
+  pulso: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  textos: { flex: 1, gap: 4 },
+  rotuloLinha: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 14 },
   ponto: { width: 6, height: 6, borderRadius: 3 },
   marca: { fontSize: 11, fontWeight: '800', lineHeight: 13 },
   rotulo: { fontSize: 10.5, fontWeight: '800', letterSpacing: 1.4 },
-  quando: { fontSize: 11, marginLeft: 'auto' },
-  trilho: { overflow: 'hidden' },
-  corredor: { flexDirection: 'row' },
-  manchete: { fontSize: 16, lineHeight: 21, fontWeight: '700', letterSpacing: -0.2, flexShrink: 0 },
-  titulo: { fontSize: 17, lineHeight: 22, fontWeight: '800', letterSpacing: -0.2 },
-  texto: { fontSize: 13.5, lineHeight: 18 },
+  quando: { fontSize: 11 },
+  // Altura fixa de uma linha: a faixa é absoluta e não dá altura ao trilho.
+  trilho: { overflow: 'hidden', height: LINHA_DA_MANCHETE },
+  faixa: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: FAIXA,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  copia: { marginLeft: ESPACO_ENTRE_VOLTAS },
+  manchete: {
+    fontSize: 15,
+    lineHeight: LINHA_DA_MANCHETE,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+  },
+  titulo: { fontSize: 15, lineHeight: 20, fontWeight: '700', letterSpacing: -0.1 },
+  texto: { fontSize: 13, lineHeight: 18 },
   icone: {
     width: ICONE,
     height: ICONE,
-    borderRadius: 8,
+    borderRadius: 10,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

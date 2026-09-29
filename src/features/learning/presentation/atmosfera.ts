@@ -7,14 +7,14 @@ import { ehHexDeCor, escurecerAte } from '../../../shared/theme/cor';
 import { CAPA_DO_TEMA } from './coverTheme';
 
 /**
- * O teto de luminância do topo. Com ele, texto branco sobre a cor pura fica
- * acima de 7:1 de contraste — "Éon", a engrenagem e a barra de status se leem
- * mesmo que a cor cadastrada seja um amarelo-claro.
+ * O teto de luminância do topo. Com ele, o alto do post fica escuro o bastante
+ * para o chip e a foto se lerem, mesmo que a cor cadastrada seja um
+ * amarelo-claro. (O header não usa atmosfera: ele é sempre a cor do tema.)
  */
 export const LUMINANCIA_MAXIMA_DO_TOPO = 0.1;
 
 export interface Atmosfera {
-  /** A cor cadastrada (ou a do tema). É a que tinge detalhes, como a borda do Pulse. */
+  /** A cor cadastrada (ou a do tema), antes de escurecer. */
   base: string;
   /** A base escurecida o bastante para texto branco. É a que pinta o topo. */
   topo: string;

@@ -10,9 +10,7 @@ import { NOMES_DE_TEMA } from '../engine/themes';
 import type { CuriosityEntry } from '../data/curiosities';
 import { resolverAtmosfera } from '../presentation/atmosfera';
 import { CAPA_DO_TEMA } from '../presentation/coverTheme';
-import {
-  ALTURA_DO_TOPO, DEGRADE_DA_BASE, FADE_ATMOSFERICO, paradasDaAtmosfera, paradasDoTopo,
-} from '../presentation/degradeDoPost';
+import { ALTURA_DO_TOPO, DEGRADE_DA_BASE, paradasDoTopo } from '../presentation/degradeDoPost';
 import { tamanhoDoTitulo } from '../presentation/feedLayout';
 
 /**
@@ -26,16 +24,15 @@ const SOMBRA_DO_TEXTO = comAlfa(MARCA.preto, 0.5);
 
 type Props = {
   curiosidade: CuriosityEntry;
-  /** Uma viewport inteira: o post É a tela, não um cartão dentro dela. */
+  /** A timeline inteira: o post É a área abaixo do header, não um cartão dentro dela. */
   altura: number;
   recuoTopo: number;
   recuoBase: number;
   /**
-   * Só no PRIMEIRO post: quanto do alto o cabeçalho (Éon + World Pulse) ocupa,
-   * flutuando sobre a foto. A atmosfera fica densa até ali, e o chip do tema
-   * desce para baixo dele. Nos outros posts, ausente.
+   * O primeiro post encosta no header, e não em outro post: não há emenda a
+   * disfarçar, então o alto dele é só fotografia.
    */
-  alturaDoCabecalho?: number;
+  primeiro: boolean;
   onLer: () => void;
 };
 
@@ -52,7 +49,7 @@ type Props = {
  * botões aninhados dizendo a mesma coisa.
  */
 function Post({
-  curiosidade, altura, recuoTopo, recuoBase, alturaDoCabecalho, onLer,
+  curiosidade, altura, recuoTopo, recuoBase, primeiro, onLer,
 }: Props) {
   const janela = useWindowDimensions();
   const capa = curiosidade.capa;
@@ -60,8 +57,6 @@ function Post({
   const fonte = tamanhoDoTitulo(janela.width);
   // Só leitura do catálogo: nenhuma análise de imagem, em momento algum.
   const atmosfera = resolverAtmosfera(curiosidade);
-  const primeiro = alturaDoCabecalho !== undefined;
-  const alturaDaAtmosfera = (alturaDoCabecalho ?? 0) + FADE_ATMOSFERICO;
 
   return (
     <Pressable
@@ -91,17 +86,10 @@ function Post({
           )}
 
           {/* O alto, num bloco próprio: sem `absoluteFill`, para a atmosfera
-              viver só na faixa de cima e não lavar a fotografia inteira.
-              Primeiro post: atmosfera FORTE, onde flutuam Éon e o World Pulse.
-              Os outros: atmosfera discreta, nascendo da emenda escura.
-              Nunca os dois juntos. */}
-          {primeiro ? (
-            <View style={[styles.topoDegrade, { height: alturaDaAtmosfera }]} pointerEvents="none">
-              <Gradient
-                paradas={paradasDaAtmosfera(atmosfera.topo, (alturaDoCabecalho ?? 0) / alturaDaAtmosfera)}
-              />
-            </View>
-          ) : (
+              viver só na faixa de cima e não lavar a fotografia inteira. Só
+              nos posts depois do primeiro, onde há uma emenda com o post de
+              cima para disfarçar. O primeiro encosta no header: fotografia pura. */}
+          {!primeiro && (
             <View style={[styles.topoDegrade, { height: ALTURA_DO_TOPO }]} pointerEvents="none">
               <Gradient paradas={paradasDoTopo(atmosfera.topo)} />
             </View>
@@ -114,11 +102,7 @@ function Post({
               quando a paleta da interface muda. O `gap` já é o lugar do sprite
               pixel art que vai entrar antes do nome. */}
           <View
-            style={[
-              styles.chip,
-              // No primeiro post, logo abaixo do World Pulse — nunca por baixo dele.
-              { top: primeiro ? (alturaDoCabecalho ?? 0) + 10 : recuoTopo, backgroundColor: tema.de },
-            ]}
+            style={[styles.chip, { top: recuoTopo, backgroundColor: tema.de }]}
           >
             <Text style={styles.chipTexto}>
               {NOMES_DE_TEMA[curiosidade.tema].toUpperCase()}

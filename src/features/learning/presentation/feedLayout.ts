@@ -7,9 +7,12 @@
 const ALTURA_MINIMA = 320;
 
 export interface MedidasDoFeed {
-  /** Altura de um post: a **viewport inteira**. A foto sangra até as bordas. */
+  /**
+   * Altura de um post: a **área da timeline** inteira — da linha que fecha o
+   * header até o pé da tela. A foto sangra até as bordas dessa área.
+   */
   alturaDoPost: number;
-  /** De onde o conteúdo pode começar: abaixo da status bar, com folga. */
+  /** De onde o conteúdo pode começar: logo abaixo do header, com folga. */
   recuoTopo: number;
   /**
    * Onde o conteúdo tem de parar. A ActionBar flutua por cima do post: a
@@ -18,14 +21,19 @@ export interface MedidasDoFeed {
   recuoBase: number;
 }
 
+/**
+ * `alturaDaTimeline` é a altura medida da lista. O header é fixo e fica fora
+ * dela, então a safe area de cima já foi consumida por ele: aqui só a de baixo
+ * conta.
+ */
 export function medidasDoFeed(
-  janela: { height: number },
-  insets: { top: number; bottom: number },
+  alturaDaTimeline: number,
+  insets: { bottom: number },
   espacoDaBarra: number,
 ): MedidasDoFeed {
   return {
-    alturaDoPost: Math.max(ALTURA_MINIMA, janela.height),
-    recuoTopo: insets.top + 14,
+    alturaDoPost: Math.max(ALTURA_MINIMA, alturaDaTimeline),
+    recuoTopo: 14,
     recuoBase: insets.bottom + espacoDaBarra + 14,
   };
 }
@@ -33,15 +41,15 @@ export function medidasDoFeed(
 /**
  * Onde começa o post `indice`, em pixels de rolagem.
  *
- * O cabeçalho (Éon + World Pulse) não ocupa espaço próprio: ele flutua SOBRE o
- * primeiro post, que começa no topo da tela. Então todo post começa num
- * múltiplo exato da viewport — nenhuma medida de cabeçalho entra na conta.
+ * O header (Éon + World Pulse) fica FORA da lista, fixo acima dela. Então todo
+ * post começa num múltiplo exato da altura da timeline — nenhuma medida de
+ * header entra na conta.
  */
 export function posicaoDoPost(alturaDoPost: number, indice: number): number {
   return indice * alturaDoPost;
 }
 
-/** As paradas do snap: uma por post, cada uma ocupando a tela inteira. */
+/** As paradas do snap: uma por post, cada uma ocupando a timeline inteira. */
 export function paradasDoFeed(alturaDoPost: number, quantidade: number): number[] {
   return Array.from({ length: quantidade }, (_, i) => posicaoDoPost(alturaDoPost, i));
 }

@@ -34,6 +34,11 @@ type Props = {
    * mudou, a câmera anima até lá. Mesmo id = nada acontece.
    */
   foco?: { id: number; x: number; y: number } | null;
+  /**
+   * Muda de valor para pedir a visão geral: a câmera anima até o mapa inteiro.
+   * Só a câmera — o mundo não é recriado nem tocado. `0` = nenhum pedido ainda.
+   */
+  visaoGeral?: number;
   /** As construções tocáveis (só civilização). Sem elas, o toque não seleciona nada. */
   construcoes?: readonly GrowthElement[];
   /**
@@ -49,11 +54,13 @@ const NITIDO = { filter: FilterMode.Nearest, mipmap: MipmapMode.None };
 /** Mapa em tela cheia. Arrastar e pinça só mudam a transformação do Group. */
 export function WorldMap({
   terreno, caminhos, largura, altura, elementos, onLongPress, despertar = 0, foco = null,
-  construcoes = [], onSelecionar,
+  visaoGeral = 0, construcoes = [], onSelecionar,
 }: Props) {
   // Mover o mapa desfaz a seleção: a etiqueta não persegue a construção.
   const aoMover = useCallback(() => onSelecionar?.(null), [onSelecionar]);
-  const { gesto, transformacao, paraMapa, paraTela, repintar, focarEm } = useMapCamera(largura, altura, aoMover);
+  const {
+    gesto, transformacao, paraMapa, paraTela, repintar, focarEm, mostrarTudo,
+  } = useMapCamera(largura, altura, aoMover);
 
   // Quem cobriu o mapa avisa que saiu da frente; aqui só reenviamos a cena.
   useEffect(() => {
@@ -68,6 +75,16 @@ export function WorldMap({
     if (idDoFoco === undefined || focoX === undefined || focoY === undefined) return;
     focarEm(focoX * ART + ART / 2, focoY * ART + ART / 2);
   }, [idDoFoco, focoX, focoY, focarEm]);
+
+  // Enquadrar o mundo inteiro, uma vez por pedido: o mapa que monta com um
+  // pedido antigo não o repete. A etiqueta de seleção sai, como em qualquer movimento.
+  const ultimaVisaoGeral = useRef(visaoGeral);
+  useEffect(() => {
+    if (visaoGeral === ultimaVisaoGeral.current) return;
+    ultimaVisaoGeral.current = visaoGeral;
+    aoMover();
+    mostrarTudo();
+  }, [visaoGeral, mostrarTudo, aoMover]);
 
   /*
    * Toque simples: seleciona a construção sob o dedo. O ponto da etiqueta é o

@@ -45,25 +45,3 @@ export function paradasDoTopo(corDoTopo: string): string {
     `${comAlfa(corDoTopo, 0)} 100%`
   );
 }
-
-/** Quanto a atmosfera do primeiro post desce ABAIXO do cabeçalho até sumir. */
-export const FADE_ATMOSFERICO = 140;
-
-/**
- * A atmosfera do PRIMEIRO post: forte onde estão Éon, engrenagem e World Pulse,
- * e depois dissolvendo na fotografia.
- *
- * `fracaoDoCabecalho` é quanto do degradê o cabeçalho ocupa (0–1). Até ali a cor
- * fica densa — a legibilidade da interface depende disso —, e só então começa a
- * sumir. A foto nunca some por completo: mesmo no alto, ela ainda transparece.
- */
-export function paradasDaAtmosfera(corDoTopo: string, fracaoDoCabecalho: number): string {
-  const fim = Math.min(Math.max(fracaoDoCabecalho, 0), 0.9) * 100;
-  const meio = fim + (100 - fim) * 0.55;
-  return (
-    `${comAlfa(corDoTopo, 0.94)} 0%, ` +
-    `${comAlfa(corDoTopo, 0.84)} ${fim.toFixed(1)}%, ` +
-    `${comAlfa(corDoTopo, 0.3)} ${meio.toFixed(1)}%, ` +
-    `${comAlfa(corDoTopo, 0)} 100%`
-  );
-}

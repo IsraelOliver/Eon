@@ -29,6 +29,11 @@ type Props = {
    * aqui de mão em mão: `learning` mostra, mas não sabe de onde veio.
    */
   pulso?: WorldPulseItem | null;
+  /**
+   * Muda de valor quando a pessoa toca de novo no Discovery já aberto: o feed
+   * rola até o topo. `learning` não sabe que foi a ActionBar.
+   */
+  voltarAoTopo?: number;
 };
 
 /**
@@ -44,7 +49,7 @@ type Props = {
  * só `transform`: nada de layout durante o movimento.
  */
 export function LearningOverlay({
-  aberto, progresso, aprendizado, onFechar, onAprendido, onConfiguracoes, pulso,
+  aberto, progresso, aprendizado, onFechar, onAprendido, onConfiguracoes, pulso, voltarAoTopo,
 }: Props) {
   const c = useColors();
   const tela = useWindowDimensions();
@@ -69,7 +74,7 @@ export function LearningOverlay({
         onVerMundo={onFechar}
         onConfiguracoes={onConfiguracoes}
         pulso={pulso}
-        visivel={aberto}
+        voltarAoTopo={voltarAoTopo}
       />
     </Animated.View>
   );

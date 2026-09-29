@@ -1,53 +1,49 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, Text, View, type ImageStyle } from 'react-native';
 
-import { useColors } from '@/shared/theme/colors';
-import { MARCA } from '@/shared/theme/marca';
+import { useColors, useTemaEfetivo } from '@/shared/theme/colors';
 import { ICONS } from '@/shared/ui/icons';
 
-/**
- * Largura das duas pontas. Iguais de propósito: é isso que deixa o nome no
- * centro da TELA, e não no centro do espaço que sobrou.
- */
-const CANTO = 44;
+/** Altura da linha e lado da área da engrenagem: o mínimo de toque do iOS. */
+const LINHA = 44;
+/** A engrenagem em pixel art (22×22): nas telas 2x e 3x, cada pixel da arte cai inteiro. */
+const TAMANHO_DA_ENGRENAGEM = 22;
+/** Só na web, que não escolhe densidade: ampliar sem suavizar a pixel art. */
+const PIXELADO =
+  Platform.OS === 'web' ? ({ imageRendering: 'pixelated' } as unknown as ImageStyle) : null;
 
 type Props = {
   /** A engrenagem é o único caminho para as Configurações. */
   onConfiguracoes?: () => void;
-  /**
-   * Sobre a atmosfera de uma foto, o nome e a engrenagem ficam brancos: a
-   * atmosfera é escurecida justamente para isso. Sem foto atrás, seguem a tinta
-   * da paleta.
-   */
-  sobreAFoto?: boolean;
 };
 
-/** Branco sobre a atmosfera: ela é escurecida até o contraste passar de 7:1. */
-const BRANCO = MARCA.branco;
-
-/** A linha do nome: espaço vazio, Éon, engrenagem — nesta ordem, uma linha só. */
-export function TopBar({ onConfiguracoes, sobreAFoto = false }: Props) {
+/**
+ * A linha de navegação do header: Éon à esquerda, engrenagem à direita, na
+ * mesma altura. Éon é a identidade da tela; a engrenagem, a navegação.
+ */
+export function TopBar({ onConfiguracoes }: Props) {
   const c = useColors();
-  const tinta = sobreAFoto ? BRANCO : c.ink;
+  // O header pousa no fundo do tema: claro pede a engrenagem escura, e vice-versa.
+  const engrenagem = useTemaEfetivo() === 'light' ? ICONS.gearEscura : ICONS.gear;
 
   return (
     <View style={styles.linha}>
-      <View style={styles.canto} />
-
-      <Text style={[styles.nome, { color: tinta }]} numberOfLines={1}>
+      <Text style={[styles.nome, { color: c.ink }]} accessibilityRole="header" numberOfLines={1}>
         Éon
       </Text>
 
-      {/* Sem círculo, sem borda, sem fundo: o ícone e mais nada. */}
+      {/* Sem círculo, sem borda, sem fundo: o ícone e mais nada. Encostado na
+          margem direita, na mesma coluna do ícone do World Pulse. */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Abrir configurações"
         disabled={!onConfiguracoes}
         onPress={onConfiguracoes}
         hitSlop={12}
-        style={({ pressed }) => [styles.canto, styles.engrenagem, pressed && styles.pressionado]}
+        style={({ pressed }) => [styles.engrenagem, pressed && styles.pressionado]}
       >
         {onConfiguracoes && (
-          <Text style={[styles.icone, { color: tinta }]}>{ICONS.gear}</Text>
+          // Sprite colorido: desenhado como foi feito, sem tint.
+          <Image source={engrenagem} style={[styles.icone, PIXELADO]} resizeMode="contain" />
         )}
       </Pressable>
     </View>
@@ -55,11 +51,9 @@ export function TopBar({ onConfiguracoes, sobreAFoto = false }: Props) {
 }
 
 const styles = StyleSheet.create({
-  linha: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, height: 40 },
-  canto: { width: CANTO },
-  engrenagem: { alignItems: 'flex-end', justifyContent: 'center', alignSelf: 'stretch' },
+  linha: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: LINHA },
+  nome: { flexShrink: 1, fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
+  engrenagem: { width: LINHA, height: LINHA, alignItems: 'flex-end', justifyContent: 'center' },
   pressionado: { opacity: 0.5 },
-  nome: { flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '700', letterSpacing: 0.5 },
-  // Um pouco maior que o texto de apoio, ainda sem moldura: só o ícone.
-  icone: { fontSize: 23, lineHeight: 27 },
+  icone: { width: TAMANHO_DA_ENGRENAGEM, height: TAMANHO_DA_ENGRENAGEM },
 });
