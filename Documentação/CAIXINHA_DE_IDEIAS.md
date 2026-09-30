@@ -125,10 +125,82 @@ A diversidade dos mundos é mais interessante que competição de quantidade.
 
 ## Crescimento, temas e identidade
 
+### Progressão acumulada da vila (nova direção)
+
+**Decisão de direção** (a implementação vive no `ARCHITECTURE.md`, em
+"Progressão da vila"): o crescimento do mundo **deixa de ser 1 curiosidade = 1
+prédio temático** ("10 curiosidades de astronomia = 10 observatórios"). Passa a
+existir uma **progressão acumulada da vila**, por **marcos únicos**:
+
+```
+mundo totalmente natural
+1ª curiosidade → CABANA    o primeiro sinal de vida / civilização
+3ª curiosidade → FOGUEIRA  aquele lugar começou a virar um núcleo
+```
+
+**Regra conceitual:** a vila cresce tanto **adicionando** novas construções
+(para os lados) quanto **evoluindo** construções existentes (para cima, no mesmo
+lugar); prédios especiais futuros também poderão ter tiers e upgrades.
+
+Uma construção que evolui continua sendo a MESMA: guarda a origem da criação e
+ganha um capítulo a cada evolução (qual degrau, qual curiosidade, quem
+contribuiu, o tipo antes e depois). A cabana do 1º aprendizado, virando casa,
+ainda é "o primeiro abrigo do seu mundo".
+
+**Sequência provisória do playtest de 20 curiosidades:**
+
+```
+ 1 → primeira cabana                    (criar — marco inicial)
+ 3 → fogueira                           (criar — marco inicial)
+ 5 → segunda cabana                     (criar — crescimento comum)
+ 8 → casa pequena                       (criar — crescimento comum)
+12 → a PRIMEIRA cabana vira casa        (evoluir)
+16 → a SEGUNDA cabana vira casa         (evoluir)
+20 → uma casa pequena vira casa grande  (evoluir — a mais antiga que caiba)
+```
+
+(A sequência anterior — casas novas nos 5, 8, 12, 16 e 20 — foi trocada por
+esta, que mistura crescer para os lados e para cima.)
+
+É para testar ritmo, não para ficar: o playtest deve dizer se o intervalo entre
+um crescimento e outro está bom, se falta algo entre a 3ª e a 5ª, e se a vila
+de 20 curiosidades parece viva o bastante.
+
+Cada degrau nasce uma vez e guarda a memória de quem o formou — o **gatilho**
+(a curiosidade que o completou) e os **contribuintes** (todas as que ajudaram
+até ali: a casa dos 5 lembra das 5 primeiras, a dos 8 das 8…). Tocar nele conta
+essa origem.
+
+Os **temas não somem**: mudam de papel. Em vez de gerar um prédio a cada
+aprendizado, passam a servir para influência futura, afinidade temática,
+desbloqueio de marcos especiais, combinações e conquistas.
+
+**Para o futuro, seguindo a mesma linha:**
+
+- **Mais marcos da vila** por progressão acumulada (o que vem depois da fogueira).
+- **Marcos temáticos:** afinidade com um tema desbloqueando um marco especial —
+  um observatório quando a jornada tem astronomia o bastante, não um por
+  curiosidade.
+- **Combinações de temas** desbloqueando marcos próprios (veja abaixo).
+- **Tiers e upgrades de prédios especiais:** a evolução já existe (cabana → casa →
+  casa grande). O mesmo motor serve para observatório → observatório avançado,
+  mina → complexo mineiro, casas com vários tiers, prédios centrais evoluindo, a
+  fogueira que um dia vira a praça com a fonte.
+- **Tela de histórico da construção:** a história inteira (criação e cada
+  evolução, com quem contribuiu) já fica guardada; falta só a tela.
+- **Conquistas ligadas aos marcos.**
+- **Afinidade temática sem spam de prédios:** o tema dá o tom da civilização,
+  sem encher o mapa de construções repetidas.
+
+O código já tem os nomes dessas famílias (`CategoriaDeCrescimento`: `comum`,
+`marco-inicial`, `marco-tematico`, `evolucao`) e um catálogo de marcos em dados.
+
 ### Personalidade temática da civilização
 
-**Princípio já discutido:** todo conhecimento faz o mundo crescer. O tema define
-a **personalidade** desse crescimento, não se ele acontece.
+**Princípio já discutido:** o tema define a **personalidade** do crescimento.
+Desde a progressão da vila, isso não significa mais um prédio do tema a cada
+curiosidade: o tema pesa como afinidade, e aparece em marcos temáticos,
+combinações e evoluções.
 
 Possibilidades por tema, sem exclusividade nem rigidez:
 
@@ -212,6 +284,9 @@ A raridade serve para criar surpresa e tornar certos momentos memoráveis, **nã
 para transformar aprendizagem em loot box.
 
 ### Marcos da jornada
+
+**Hoje:** já começou — 1ª curiosidade = cabana, 3ª = fogueira (veja "Progressão
+acumulada da vila", acima). O que segue é a continuação dessa linha.
 
 **Ideia futura:** quantidades acumuladas provocando momentos especiais.
 
@@ -481,6 +556,33 @@ diretamente a "Plantas raras como recompensa de Natureza".
 `RAIO_PRACA` já reserva o espaço em volta da fonte e impede construções ali. Um
 dia esse espaço vira praça desenhada, cruzamento e início das ruas — hoje ele
 não é desenhado.
+
+### Acampamento → assentamento → vila (caminhos que crescem)
+
+**Decisão de direção** (implementada: "Caminhos da progressão", no
+`ARCHITECTURE.md`): o chão entre as construções também conta a história.
+
+```
+1–5   cabana, fogueira, cabana   ACAMPAMENTO   nenhum caminho
+8     primeiras trilhas          ASSENTAMENTO  grama gasta, pontilhada, fina
+12    trilhas mais marcadas                    mais contínuas; o chão do fogo gasta
+16    a rede liga tudo           VILA          casas ligadas entre si, ainda finas
+20    caminhos maduros                         terra batida legível, traçado calmo
+```
+
+Os caminhos não são linhas retas com a borda suja: o próprio trajeto curva,
+como trilha de terra aberta pelo uso, e tudo sai da seed. E amadurecem pela
+**presença**, não pela largura: "primeiro o caminho aparece, depois se firma, e
+só por último se organiza". A largura cresce pouco e tem teto.
+
+### A fogueira que vira praça com fonte
+
+**Ideia futura, já preparada:** a fonte não deveria aparecer do nada — ela é a
+fogueira crescendo. O terreiro de terra batida que se forma em volta do fogo
+(nível 2 em diante) é o embrião da praça; um degrau `evoluir` fogueira → fonte
+já faz a vila passar a ter praça no lugar do fogo. Falta decidir **quando**
+(depois dos 20? junto de um marco de "vila de verdade"?) e desenhar a praça:
+calçamento, bancos, o cruzamento das ruas.
 
 ### Clareira é solução de desenho, não de mundo
 

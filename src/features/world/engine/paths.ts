@@ -8,10 +8,12 @@
 // Puro e determinístico: só hash2 com a seed do mundo. Medidas em tiles.
 // =====================================================================
 import { tipoConstruivel } from './buildable';
-import { retanguloDe } from './footprint';
-import { hash2 } from './noise';
+import { pontoDeEntrada, retanguloDe } from './footprint';
+import { hash2, valueNoise } from './noise';
 import { H, W } from './rules';
-import type { PathKind, PathTile, Settlement, TileType, World, WorldOccupant } from './types';
+import type {
+  NivelDosCaminhos, PathKind, PathTile, Settlement, TileType, World, WorldOccupant,
+} from './types';
 
 /** Largura da faixa, em tiles. */
 export const LARGURA_CAMINHO: Record<PathKind, number> = {
@@ -305,3 +307,424 @@ export function conectarARede(
 
 /** Quantas rotas ainda faltam para a vila ter os dois eixos principais. */
 export const VIAS_PRINCIPAIS_DA_VILA = VIAS_PRINCIPAIS;
+
+// =====================================================================
+// A REDE DA PROGRESSÃO — trilhas que nascem e amadurecem com a vila.
+//
+// Diferente da rede por evento acima (que cresce rota a rota a partir da
+// praça da fonte), esta é REFEITA por inteiro a partir do estado da vila —
+// construções + nível — sempre que ele muda. Determinística: mesma seed, mesmas
+// construções, mesmo nível, mesma rede. Assim os caminhos sempre combinam com a
+// vila de agora, inclusive depois de uma construção evoluir.
+//
+// O trajeto já nasce irregular: a rota anda em 8 direções sobre um campo de
+// custo suave (colinas invisíveis de alguns tiles), então desvia em curvas
+// largas em vez de seguir a régua. O desenho (render/pathPixels.ts) suaviza o
+// resto em escala de pixel.
+// =====================================================================
+
+/**
+ * Como a rede é em cada nível. O traçado tem SEMPRE um tile de largura: a
+ * trilha amadurece pela presença — espessura visual, cobertura de terra,
+ * opacidade e traçado mais calmo —, não por engrossar.
+ */
+export interface NivelDaRede {
+  /** Largura visual das trilhas, em fração de tile (1 tile = 4 px). */
+  espessura: number;
+  /** Largura visual dos dois eixos (as trilhas mais perto do núcleo). Teto: 1. */
+  espessuraDosEixos: number;
+  /** Quanto da trilha já é terra (0 a 1): o resto continua grama gasta. */
+  cobertura: number;
+  /** Opacidade da terra (0 a 1). */
+  opacidade: number;
+  /** Quanto o traçado ondula, em tiles. Menos = mais organizado. */
+  curva: number;
+  /** Raio (tiles) do terreiro gasto em volta da fogueira. 0 = nenhum. */
+  terreiro: number;
+  /** Liga cada construção à vizinha mais próxima (a rede deixa de ser só estrela). */
+  ligarVizinhas: boolean;
+}
+
+/**
+ * A maturidade da rede, nível a nível — é aqui que se calibra como os caminhos
+ * crescem. "Primeiro o caminho aparece, depois se firma, e só por último se
+ * organiza": a largura quase não muda (≈2 px → 3,5 px, com teto de 1 tile); o
+ * que muda é quanto da grama já virou terra, quão firme é essa terra e quão
+ * calmo é o traçado.
+ *
+ * O terreiro em volta da fogueira é o embrião da praça: quando a fogueira
+ * evoluir para fonte, a praça nasce de um chão que já existia. Cresce devagar.
+ */
+export const NIVEIS_DA_REDE: Record<Exclude<NivelDosCaminhos, 0>, NivelDaRede> = {
+  // 8 — aparece: grama gasta, pontilhada, fina; ainda sinuosa
+  1: { espessura: 0.55, espessuraDosEixos: 0.6, cobertura: 0.62, opacidade: 0.72, curva: 1.8, terreiro: 0, ligarVizinhas: false },
+  // 12 — se firma: mais contínua, terra no meio; o chão perto do fogo começa a gastar
+  2: { espessura: 0.62, espessuraDosEixos: 0.7, cobertura: 0.76, opacidade: 0.8, curva: 1.7, terreiro: 1.2, ligarVizinhas: false },
+  // 16 — liga tudo: as casas também se ligam entre si; ainda fina
+  3: { espessura: 0.7, espessuraDosEixos: 0.8, cobertura: 0.86, opacidade: 0.86, curva: 1.5, terreiro: 1.5, ligarVizinhas: true },
+  // 20 — se organiza: terra batida legível, traçado mais calmo, largura no teto
+  4: { espessura: 0.78, espessuraDosEixos: 0.9, cobertura: 0.95, opacidade: 0.92, curva: 1.2, terreiro: 1.8, ligarVizinhas: true },
+};
+
+/** O terreiro é mais ralo e mais claro que a trilha: chão gasto, não pátio. */
+const TERREIRO = { cobertura: 0.7, opacidade: 0.75 };
+/** A ligação entre casas vizinhas é um pouco mais fraca que a trilha até o fogo. */
+const LIGACAO = 0.85;
+
+/** Custo extra máximo das "colinas invisíveis" que fazem a trilha curvar. */
+const ONDULACAO = 7;
+/** Tamanho dessas colinas, em tiles: curvas largas, não zigue-zague. */
+const ESCALA_DA_ONDULACAO = 6;
+/** Raio (tiles) em volta do núcleo onde uma trilha já "chegou" ao fogo. */
+const RAIO_DO_NUCLEO = 2.2;
+/** Comprimento de uma "onda" da trilha, em tiles: curvas largas. (A amplitude é do nível: `curva`.) */
+const ONDA_DA_CURVA = 7;
+
+const PASSOS_8 = [
+  [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1],
+  [1, 1, Math.SQRT2], [1, -1, Math.SQRT2], [-1, 1, Math.SQRT2], [-1, -1, Math.SQRT2],
+] as const;
+
+/** Pode pisar? Terra transitável, dentro do mapa e fora de construção. */
+function pisavel(mundo: World, x: number, y: number, bloqueados: Set<number>): boolean {
+  if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) return false;
+  const i = chave(x, y);
+  return !mundo.agua[i] && !bloqueados.has(i) && CUSTO_TERRENO[mundo.tipo[i]] !== undefined;
+}
+
+/**
+ * A trilha mais barata da `origem` até QUALQUER tile de `alvo`, em 8 direções.
+ * O custo do tile soma o terreno e um campo suave determinístico: é ele que
+ * curva o trajeto. Andar sobre a rede que já existe (`reuso`) é quase de graça,
+ * então as trilhas se juntam em vez de correr lado a lado. Diagonal só sem
+ * cortar quina de construção. Devolve da origem até o alvo, ou null.
+ */
+function trilha(
+  mundo: World,
+  origem: { x: number; y: number },
+  alvo: Set<number>,
+  reuso: Set<number>,
+  bloqueados: Set<number>,
+  area: { x0: number; y0: number; x1: number; y1: number },
+): { x: number; y: number }[] | null {
+  const largura = area.x1 - area.x0 + 1;
+  const altura = area.y1 - area.y0 + 1;
+  if (origem.x < area.x0 || origem.y < area.y0 || origem.x > area.x1 || origem.y > area.y1) return null;
+  const indice = (x: number, y: number) => (y - area.y0) * largura + (x - area.x0);
+  const custos = new Float64Array(largura * altura).fill(Infinity);
+  const veioDe = new Int32Array(largura * altura).fill(-1);
+  const fila = new Fila();
+  const custoDe = (x: number, y: number) =>
+    reuso.has(chave(x, y))
+      ? CUSTO_CAMINHO
+      : (CUSTO_TERRENO[mundo.tipo[chave(x, y)]] ?? 60) +
+        valueNoise(x / ESCALA_DA_ONDULACAO, y / ESCALA_DA_ONDULACAO, mundo.seed + 1709) * ONDULACAO;
+
+  const inicio = indice(origem.x, origem.y);
+  custos[inicio] = 0;
+  fila.inserir(0, inicio);
+  let chegada = -1;
+  while (!fila.vazia) {
+    const atual = fila.retirar();
+    if (!atual || atual.custo > custos[atual.estado]) continue;
+    const x = area.x0 + (atual.estado % largura);
+    const y = area.y0 + ((atual.estado / largura) | 0);
+    if (alvo.has(chave(x, y))) {
+      chegada = atual.estado;
+      break;
+    }
+    for (const [dx, dy, passo] of PASSOS_8) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < area.x0 || ny < area.y0 || nx > area.x1 || ny > area.y1) continue;
+      if (!pisavel(mundo, nx, ny, bloqueados)) continue;
+      // diagonal sem cortar quina: os dois vizinhos retos têm de ser pisáveis
+      if (dx !== 0 && dy !== 0 && (!pisavel(mundo, x + dx, y, bloqueados) || !pisavel(mundo, x, y + dy, bloqueados))) {
+        continue;
+      }
+      const novo = atual.custo + custoDe(nx, ny) * passo;
+      const destino = indice(nx, ny);
+      if (novo < custos[destino]) {
+        custos[destino] = novo;
+        veioDe[destino] = atual.estado;
+        fila.inserir(novo, destino);
+      }
+    }
+  }
+  if (chegada < 0) return null;
+
+  const rota: { x: number; y: number }[] = [];
+  for (let e = chegada; e >= 0; e = veioDe[e]) {
+    rota.push({ x: area.x0 + (e % largura), y: area.y0 + ((e / largura) | 0) });
+  }
+  return rota.reverse();
+}
+
+/**
+ * Passos diagonais viram dois passos retos (o tile da quina entra na trilha).
+ * Sem isso, uma trilha fina em diagonal seria uma fila de tiles que só se
+ * tocam pela ponta — e o desenho, que suaviza, a partiria em pedaços.
+ */
+function continua(
+  mundo: World,
+  rota: readonly { x: number; y: number }[],
+  bloqueados: Set<number>,
+): { x: number; y: number }[] {
+  const saida: { x: number; y: number }[] = [];
+  for (const p of rota) {
+    const anterior = saida[saida.length - 1];
+    if (anterior && anterior.x !== p.x && anterior.y !== p.y) {
+      // qual quina: uma que dê para pisar; a escolha é da seed, não do acaso
+      const a = { x: p.x, y: anterior.y };
+      const b = { x: anterior.x, y: p.y };
+      const preferida = hash2(p.x, p.y, mundo.seed + 1811) < 0.5 ? a : b;
+      const outra = preferida === a ? b : a;
+      saida.push(pisavel(mundo, preferida.x, preferida.y, bloqueados) ? preferida : outra);
+    }
+    saida.push(p);
+  }
+  return saida;
+}
+
+/**
+ * Deixa a rota orgânica: suaviza a linha (tira os ângulos da grade) e a
+ * desloca de lado por uma onda suave ao longo do comprimento — que some nas
+ * pontas, para a trilha ainda encostar na porta e no fogo. Volta para tiles sem
+ * entrar em construção nem na água: onde a onda não pode ir, fica a rota
+ * original. Determinístico: a onda sai da seed e da origem da trilha.
+ */
+function ondular(
+  mundo: World,
+  rota: readonly { x: number; y: number }[],
+  bloqueados: Set<number>,
+  amplitude: number,
+): { x: number; y: number }[] {
+  const n = rota.length;
+  if (n < 5) return continua(mundo, rota, bloqueados);
+
+  // 1) suaviza: média de cinco pontos (as pontas ficam onde estão)
+  const lisa = rota.map((p, i) => {
+    if (i === 0 || i === n - 1) return { x: p.x, y: p.y };
+    let sx = 0;
+    let sy = 0;
+    let k = 0;
+    for (let d = -2; d <= 2; d++) {
+      const q = rota[Math.max(0, Math.min(n - 1, i + d))];
+      sx += q.x;
+      sy += q.y;
+      k++;
+    }
+    return { x: sx / k, y: sy / k };
+  });
+
+  // 2) ondula: desloca na perpendicular, com a onda indo a zero nas pontas
+  const fase = hash2(rota[0].x, rota[0].y, mundo.seed + 1733) * 50;
+  let percorrido = 0;
+  const ondulada = lisa.map((p, i) => {
+    if (i > 0) percorrido += Math.hypot(p.x - lisa[i - 1].x, p.y - lisa[i - 1].y);
+    const a = lisa[Math.max(0, i - 1)];
+    const b = lisa[Math.min(n - 1, i + 1)];
+    const tam = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const nx = -(b.y - a.y) / tam;
+    const ny = (b.x - a.x) / tam;
+    const afina = Math.sin((Math.PI * i) / (n - 1)); // 0 nas pontas, 1 no meio
+    const desvio = (valueNoise(percorrido / ONDA_DA_CURVA + fase, fase, mundo.seed + 1747) - 0.5) * 2;
+    const d = desvio * amplitude * afina;
+    return { x: p.x + nx * d, y: p.y + ny * d };
+  });
+
+  // 3) de volta para tiles, amostrando cada trecho em passos curtos
+  const saida: { x: number; y: number }[] = [];
+  const empurrar = (x: number, y: number, reserva: { x: number; y: number }) => {
+    const tx = Math.round(x);
+    const ty = Math.round(y);
+    const tile = pisavel(mundo, tx, ty, bloqueados) ? { x: tx, y: ty } : reserva;
+    const ultimo = saida[saida.length - 1];
+    if (!ultimo || ultimo.x !== tile.x || ultimo.y !== tile.y) saida.push(tile);
+  };
+  for (let i = 0; i < n - 1; i++) {
+    const a = ondulada[i];
+    const b = ondulada[i + 1];
+    const passos = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 0.3));
+    for (let s = 0; s < passos; s++) {
+      const t = s / passos;
+      empurrar(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, rota[i]);
+    }
+  }
+  empurrar(ondulada[n - 1].x, ondulada[n - 1].y, rota[n - 1]);
+  return continua(mundo, saida, bloqueados);
+}
+
+/** Como um trecho é desenhado: força (opacidade), espessura e cobertura. */
+type Traco = Required<Pick<PathTile, 'forca' | 'espessura' | 'cobertura'>> & { tipo: PathKind };
+
+/**
+ * Marca um tile da rede. Onde duas trilhas se cruzam, cada valor fica com o
+ * mais marcado — cruzar não apaga nem afina ninguém.
+ */
+function marcar(rede: Map<number, PathTile>, x: number, y: number, traco: Traco): void {
+  const i = chave(x, y);
+  const antes = rede.get(i);
+  if (!antes) {
+    rede.set(i, { x, y, ...traco });
+    return;
+  }
+  rede.set(i, {
+    x,
+    y,
+    tipo: (antes.forca ?? 1) >= traco.forca ? antes.tipo : traco.tipo,
+    forca: Math.max(antes.forca ?? 1, traco.forca),
+    espessura: Math.max(antes.espessura ?? 1, traco.espessura),
+    cobertura: Math.max(antes.cobertura ?? 1, traco.cobertura),
+  });
+}
+
+/**
+ * Marca a linha central — um tile de largura, sempre. Quem dá a largura
+ * VISUAL é o desenho (`espessura`), por isso a trilha nunca vira faixa grossa.
+ * Nunca invade água nem construção.
+ */
+function tracar(
+  mundo: World,
+  centro: readonly { x: number; y: number }[],
+  traco: Traco,
+  bloqueados: Set<number>,
+  rede: Map<number, PathTile>,
+): void {
+  for (const c of centro) {
+    if (!pisavel(mundo, c.x, c.y, bloqueados) || !tipoConstruivel(mundo.tipo[chave(c.x, c.y)])) continue;
+    marcar(rede, c.x, c.y, traco);
+  }
+}
+
+/**
+ * A rede inteira da vila no nível dado. `nucleo` é o coração da vila (a
+ * fogueira, ou a fonte), e `construcoes` são as da vila, sem ele.
+ *
+ * - toda construção ganha uma trilha da porta até o núcleo — ou até a rede que
+ *   já existe, o que for mais barato (as trilhas se juntam em galhos);
+ * - as duas mais perto do núcleo viram os eixos, um pouco mais legíveis;
+ * - do nível 2 em diante, um terreiro gasto (pequeno) em volta do fogo;
+ * - do nível 3 em diante, cada construção se liga também à vizinha mais
+ *   próxima: a rede deixa de ser uma estrela.
+ */
+export function redeDaVila(
+  mundo: World,
+  vila: Settlement,
+  nucleo: { x: number; y: number } | null,
+  construcoes: readonly { x: number; y: number; orientacao?: 'frente' | 'tras' }[],
+  ocupantes: readonly WorldOccupant[],
+  nivel: NivelDosCaminhos,
+): PathTile[] {
+  if (nivel === 0) return [];
+  const cfg = NIVEIS_DA_REDE[nivel];
+  const bloqueados = tilesBloqueados(ocupantes);
+  const rede = new Map<number, PathTile>();
+  // o chão logo à frente do núcleo (ou o centro lógico, sem núcleo)
+  const centro = nucleo ? { x: nucleo.x, y: nucleo.y + 1 } : { x: vila.x, y: vila.y };
+
+  // o terreiro: disco irregular de terra batida em volta do fogo
+  if (cfg.terreiro > 0) {
+    const r = Math.ceil(cfg.terreiro) + 1;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const x = centro.x + dx;
+        const y = centro.y + dy - 1;
+        const variacao = (hash2(x, y, mundo.seed + 1499) - 0.5) * 1.4;
+        if (Math.hypot(dx, dy) > cfg.terreiro + variacao) continue;
+        if (!pisavel(mundo, x, y, bloqueados) || !tipoConstruivel(mundo.tipo[chave(x, y)])) continue;
+        marcar(rede, x, y, {
+          tipo: 'principal',
+          forca: cfg.opacidade * TERREIRO.opacidade,
+          espessura: 1, // o terreiro é chão, não trilha: cobre o tile inteiro
+          cobertura: cfg.cobertura * TERREIRO.cobertura,
+        });
+      }
+    }
+  }
+
+  // onde uma trilha já "chegou" ao fogo
+  const chegouAoNucleo = new Set<number>();
+  const rn = Math.ceil(RAIO_DO_NUCLEO);
+  for (let dy = -rn; dy <= rn; dy++) {
+    for (let dx = -rn; dx <= rn; dx++) {
+      if (Math.hypot(dx, dy) > RAIO_DO_NUCLEO) continue;
+      if (pisavel(mundo, centro.x + dx, centro.y + dy, bloqueados)) {
+        chegouAoNucleo.add(chave(centro.x + dx, centro.y + dy));
+      }
+    }
+  }
+
+  const alcance = Math.ceil(vila.raio) + MARGEM_BUSCA;
+  const area = {
+    x0: Math.max(1, vila.x - alcance),
+    y0: Math.max(1, vila.y - alcance),
+    x1: Math.min(W - 2, vila.x + alcance),
+    y1: Math.min(H - 2, vila.y + alcance),
+  };
+
+  // da mais perto do fogo para a mais longe (empate pela posição: determinístico)
+  const distancia = (c: { x: number; y: number }) => Math.hypot(c.x - centro.x, c.y - centro.y);
+  const ordenadas = [...construcoes].sort((a, b) => distancia(a) - distancia(b) || a.y - b.y || a.x - b.x);
+  const entradas = ordenadas.map((c) => pontoDeEntrada(c));
+  // a porta é o começo da trilha: ela nunca está bloqueada
+  for (const e of entradas) bloqueados.delete(chave(e.x, e.y));
+
+  entradas.forEach((entrada, i) => {
+    const naRede = new Set(rede.keys());
+    const alvo = new Set([...naRede, ...chegouAoNucleo]);
+    const rota = trilha(mundo, entrada, alvo, naRede, bloqueados, area);
+    if (!rota) return;
+    const eixo = i < VIAS_PRINCIPAIS;
+    tracar(
+      mundo,
+      ondular(mundo, rota, bloqueados, cfg.curva),
+      {
+        tipo: eixo ? 'principal' : 'secundario',
+        forca: cfg.opacidade,
+        espessura: eixo ? cfg.espessuraDosEixos : cfg.espessura,
+        cobertura: cfg.cobertura,
+      },
+      bloqueados,
+      rede,
+    );
+  });
+
+  // nível 3+: cada construção também se liga à vizinha mais próxima
+  if (cfg.ligarVizinhas) {
+    const feitos = new Set<string>();
+    entradas.forEach((a, i) => {
+      let j = -1;
+      let menor = Infinity;
+      entradas.forEach((b, k) => {
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (k !== i && d < menor) {
+          menor = d;
+          j = k;
+        }
+      });
+      if (j < 0) return;
+      const par = i < j ? `${i}-${j}` : `${j}-${i}`;
+      if (feitos.has(par)) return;
+      feitos.add(par);
+      const b = entradas[j];
+      const rota = trilha(mundo, a, new Set([chave(b.x, b.y)]), new Set(rede.keys()), bloqueados, area);
+      if (rota) {
+        tracar(
+          mundo,
+          ondular(mundo, rota, bloqueados, cfg.curva),
+          {
+            tipo: 'secundario',
+            forca: cfg.opacidade * LIGACAO,
+            espessura: cfg.espessura * LIGACAO,
+            cobertura: cfg.cobertura * LIGACAO,
+          },
+          bloqueados,
+          rede,
+        );
+      }
+    });
+  }
+
+  return [...rede.values()];
+}

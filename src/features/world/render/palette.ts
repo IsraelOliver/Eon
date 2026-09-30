@@ -37,7 +37,8 @@ export const BORDA_AREIA = '#c7a66a';
 
 /**
  * Motivo: desenho pequeno dentro de um tile, em coordenadas de pixel de arte
- * (0 a ART-1). São poucos pixels, colocados de propósito — nada de ruído fino.
+ * (de 0 a 2: cabe em qualquer tile de 3 px ou mais). São poucos pixels,
+ * colocados de propósito — nada de ruído fino.
  */
 export type Motivo = ReadonlyArray<readonly [number, number]>;
 
@@ -57,28 +58,25 @@ const ONDA_CURTA: Motivo = [[0, 1], [1, 1]];
  * - `chance` + `motivos`: chance de o tile receber UM motivo, sorteado entre os
  *   da lista. É o único detalhe dentro do bioma, e aparece a cada poucos tiles.
  * - `tom`: se o motivo é mais claro ou mais escuro que o terreno.
- * - `mistura`: chance de a borda do tile pegar a cor do bioma vizinho, sorteada
- *   em blocos de 2x2 pixels — a fronteira fica dentada, não granulada.
  */
 export interface Textura {
   chance: number;
   motivos: readonly Motivo[];
   tom: 'claro' | 'escuro';
-  mistura: number;
 }
 
 export const TEXTURA: Record<TileType, Textura> = {
-  oceano: { chance: 0.02, motivos: [ONDA_CURTA], tom: 'claro', mistura: 0 },
-  raso: { chance: 0.03, motivos: [ONDA_CURTA], tom: 'claro', mistura: 0 },
-  lago: { chance: 0.02, motivos: [ONDA_CURTA], tom: 'claro', mistura: 0 },
-  praia: { chance: 0.05, motivos: [PEDRINHA], tom: 'escuro', mistura: 0.2 },
-  deserto: { chance: 0.06, motivos: [PEDRINHA, MARCA], tom: 'escuro', mistura: 0.25 },
-  savana: { chance: 0.12, motivos: [CAPIM, TUFO], tom: 'escuro', mistura: 0.28 },
-  planicie: { chance: 0.12, motivos: [TUFO, FOLHAS], tom: 'escuro', mistura: 0.28 },
-  floresta: { chance: 0.14, motivos: [FOLHAS, TUFO], tom: 'escuro', mistura: 0.28 },
-  tundra: { chance: 0.1, motivos: [PEDRINHA, MARCA], tom: 'escuro', mistura: 0.28 },
-  montanha: { chance: 0.18, motivos: [RACHADURA, RACHADURA_INV, PEDRINHA], tom: 'escuro', mistura: 0.25 },
-  neve: { chance: 0.04, motivos: [MARCA], tom: 'escuro', mistura: 0.25 },
+  oceano: { chance: 0.02, motivos: [ONDA_CURTA], tom: 'claro' },
+  raso: { chance: 0.03, motivos: [ONDA_CURTA], tom: 'claro' },
+  lago: { chance: 0.02, motivos: [ONDA_CURTA], tom: 'claro' },
+  praia: { chance: 0.05, motivos: [PEDRINHA], tom: 'escuro' },
+  deserto: { chance: 0.06, motivos: [PEDRINHA, MARCA], tom: 'escuro' },
+  savana: { chance: 0.12, motivos: [CAPIM, TUFO], tom: 'escuro' },
+  planicie: { chance: 0.12, motivos: [TUFO, FOLHAS], tom: 'escuro' },
+  floresta: { chance: 0.14, motivos: [FOLHAS, TUFO], tom: 'escuro' },
+  tundra: { chance: 0.1, motivos: [PEDRINHA, MARCA], tom: 'escuro' },
+  montanha: { chance: 0.18, motivos: [RACHADURA, RACHADURA_INV, PEDRINHA], tom: 'escuro' },
+  neve: { chance: 0.04, motivos: [MARCA], tom: 'escuro' },
 };
 
 // Paleta dos sprites: cada letra do desenho vira uma cor

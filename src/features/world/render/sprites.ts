@@ -6,6 +6,9 @@ export const SPRITES: Record<SpriteKey, string[]> = {
   // Desenhos de reserva enquanto o PNG não carrega (as vilas usam os PNGs diagonais).
   casa_maior: ['...R...', '..RrR..', '.RrrrR.', 'RrrrrrR', '.wwwww.', '.wdwdw.', '.wwwww.', '.wdwdw.', '.wwdww.'],
   fonte: ['..s..', '.wgw.', 'wgggw', '.www.'],
+  // Reservas enquanto o PNG do marco não carrega.
+  cabana: ['...R...', '..RRR..', '.RRrRR.', 'RRRrRRR', '.wwdww.'],
+  fogueira: ['..R..', '.RrR.', '.RrR.', 'n.n.n', '.nnn.'],
   observatorio: ['....s..', '..ggg..', '.ggggg.', '.wwwww.', '.wwdww.', '.wwdww.'],
   mina: ['.bbbbb.', 'bkkkkkb', 'bkkkkkb', 'bkkkkkb', 'ooooooo'],
   arvore: ['..TTT..', '.TTtTT.', 'TtTttTt', 'ttttttt', '.ttttt.', '...n...', '...n...'],

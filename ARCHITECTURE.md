@@ -13,15 +13,17 @@ src/
       engine/                → lógica pura (sem React, React Native ou Skia)
         types.ts             → tipos: World, Element, Tile, Theme, Resultado, WorldGrowthEvent…
         noise.ts             → hash, value noise, fBm, normalizar, gerador aleatório
+        escala.ts            → A ESCALA: pixels por tile e tamanho do mundo (a cabana é a referência)
         rules.ts             → REGRAS do mundo, ESCALA_MUNDO, faixas e nomes
         generate.ts          → gera o mundo (semente + nível do mar como parâmetros)
         nature.ts            → decoração natural do mundo selvagem (árvores, pedras…)
         destaque.ts          → escolhe a novidade a mostrar depois de aprender (+ a frase)
         selecao.ts           → qual construção está sob o toque (+ nomes das construções)
         inspect.ts           → descreverTile(): bioma, altitude e umidade de um tile
-        growth.ts            → gerarEventosDeCrescimento(): influências → eventos abstratos
+        marcos.ts            → PROGRESSÃO DA VILA: catálogo de marcos + marcosPendentes()
+        growth.ts            → gerarEventosDeCrescimento(): influências → eventos (crescimento comum)
         growthPlacement.ts   → colocarCrescimento(): evento → lugar válido + sprite
-        growthElements.ts    → aplicarEventosDeCrescimento(): eventos → GrowthElement[] + vilas
+        growthElements.ts    → aplicarMarcos() e aplicarEventosDeCrescimento() → GrowthElement[] + vilas
         settlements.ts       → Settlement: núcleo lógico das vilas, zonas, anéis e fonte
         appearance.ts        → orientação (frente/trás) e variante (v1/v2) das residências
         footprint.ts         → espaço de cada construção no chão (retângulo ancorado na base)
@@ -46,7 +48,7 @@ src/
         WorldDevTools.tsx    → (dev) semente, nível do mar e botões de crescimento
         BiomeLegend.tsx      → (dev) legenda das cores do mapa
       hooks/
-        useWorld.ts          → estado do mundo; aplicarEventos() é a porta do crescimento
+        useWorld.ts          → estado do mundo; avancarProgressao() é a porta do conhecimento
         useMapCamera.ts      → câmera: gestos, limites, tela↔mapa, focarEm, aviso de movimento
         useSpriteImages.ts   → carrega os PNGs dos sprites (useImage, ordem fixa)
     learning/                → aprendizagem: curiosidades e perfil de conhecimento
@@ -207,7 +209,10 @@ toque no botão → componente chama função recebida por props
 | Mexer na gravação/chave do save         | `persistence/storage.ts` (`@eon/save`) |
 | Mexer na aleatoriedade do crescimento   | `world/engine/growthElements.ts` (`rngDeCrescimento`) |
 | Mexer na ponte aprender → mundo         | `app/index.tsx` (`aoAprender`)        |
-| Mudar como o mundo aplica crescimento   | `world/hooks/useWorld.ts` (`aplicarEventos`) |
+| Mudar como o mundo aplica crescimento   | `world/hooks/useWorld.ts` (`avancarProgressao`) |
+| Criar/mudar um marco da vila            | `world/engine/marcos.ts` (`MARCOS`) + sprite em `spriteAssets.ts` |
+| Aumentar/diminuir a escala do mapa      | `world/engine/escala.ts` (`PIXELS_POR_TILE`, `TILES_*`) |
+| Mudar o desenho do terreno (costa, manchas) | `world/render/buildPixels.ts` (constantes do topo) |
 | Mudar os botões da barra de baixo       | `app/index.tsx` (`acoes`) + `shared/ui/icons.ts` |
 | Mudar o formato/tamanho da barra        | `shared/ui/ActionBar.tsx`             |
 | Mudar a transição Mundo ↔ Discovery     | `shared/ui/navegacao.ts` (`PARALLAX_DO_MUNDO`, `DURACAO_DA_NAVEGACAO`) |
@@ -238,8 +243,8 @@ Segue as três camadas de `Documentação/mecanica_conhecimento_e_crescimento_do
 
 ```
 learning                                   shared/domain          world
-Curiosity ─registrarAprendizado─▶ LearningResult.influencias ─gerarEventosDeCrescimento─▶ WorldGrowthEvent[] ─(futuro)─▶ mapa
-                                  (KnowledgeInfluence[])
+Curiosity ─registrarAprendizado─▶ LearningResult.perfil.aprendidas ─avancarProgressao─▶ marcos da vila ─▶ mapa
+                                  (influências ficam no perfil: afinidade para marcos futuros)
 ```
 
 - **`Curiosity`**: id, título, preview, conteúdo, tema, tags, influências, fontes
@@ -292,8 +297,10 @@ as **Aprendidas** (tela futura), *o que já faz parte da minha jornada*; e o
 
 ### O topo do feed (World Pulse)
 
-**O header é uma região própria, fixa, acima da timeline.** `LearningHeader` é
-irmão do `DiscoveryFeed`, não parte dele: o header termina, a timeline começa.
+**O header é uma região própria no alto da PRIMEIRA página do feed** — não é
+fixo. `LearningHeader` entra como `cabecalho` do `DiscoveryFeed`, acima do
+primeiro post, e sobe junto quando a pessoa passa para a próxima curiosidade;
+voltar ao topo o traz de volta. O header termina, o post começa.
 
 ```
 ┌─────────────────────────────┐  fundoFeed (tema), safe area de cima
@@ -467,8 +474,8 @@ feed apareceria em outra posição. A sincronização acontece quando a leitura 
 recém-aprendida continua legível até quem está lendo decidir sair.
 
 ```
-┌──────────────┐  altura = a TIMELINE INTEIRA (sem margem, sem raio)
-│ [ GEOLOGIA ] │  ← chip na cor do próprio tema, logo abaixo do header
+┌──────────────┐  altura = a PÁGINA (a tela; o 1º post divide a dele com o header)
+│ [ GEOLOGIA ] │  ← chip na cor do próprio tema, abaixo do header / da status bar
 │              │
 │  fotografia  │  ← expo-image, 'cover', fill absoluto, de borda a borda
 │ ░░░░░░░░░░░░ │  ← Gradient progressivo: nada no alto, firme só na base
@@ -481,17 +488,21 @@ recém-aprendida continua legível até quem está lendo decidir sair.
 A conta toda vive em `presentation/feedLayout.ts`, **pura e testada** —
 `medidasDoFeed`, `posicaoDoPost`, `paradasDoFeed`.
 
-- **Full-bleed dentro da timeline:** o post ocupa toda a área abaixo do header.
-  Altura = a altura MEDIDA da lista (`onLayout`; antes da primeira medida, uma
-  estimativa que vale um quadro). A fotografia passa **por baixo** da ActionBar
-  de propósito. Só o texto respeita as bordas, por dois recuos: `recuoTopo` (14
-  pt abaixo do header) e `recuoBase` (safe bottom + `ESPACO_ACTION_BAR`).
-- **Snap simples:** o header está fora da lista, então todo post começa em
-  `k × altura da timeline` (`paradasDoFeed`). `decelerationRate="fast"` +
-  `disableIntervalMomentum` encaixam sem prender e sem pular dois de uma vez.
-- **Nenhum padding no conteúdo da lista:** com posts da altura da lista, o fim
-  da rolagem coincide exatamente com a última parada. Feed vazio: "Você
-  descobriu tudo" ocupa a timeline, sob o mesmo header.
+- **Páginas do tamanho da lista** (a tela, medida com `onLayout`). A primeira é
+  o header + o primeiro post, que ocupa com `flex: 1` o que o header deixa — sem
+  depender de medir o header. As outras são um post de borda a borda, com a
+  foto passando por baixo da status bar e da ActionBar. Só o texto respeita as
+  bordas: `recuoTopo` (safe top + 14; no primeiro post, 14 abaixo do header) e
+  `recuoBase` (safe bottom + `ESPACO_ACTION_BAR`).
+- **Status bar:** segue o tema enquanto o header está embaixo dela; quando ele
+  sai (`onHeaderFora`, pela rolagem), o alto é fotografia e os ícones ficam
+  claros.
+- **Snap simples:** toda página começa em `k × altura da lista`
+  (`paradasDoFeed`). `decelerationRate="fast"` + `disableIntervalMomentum`
+  encaixam sem prender e sem pular dois de uma vez.
+- **Nenhum padding no conteúdo da lista:** com páginas da altura da lista, o fim
+  da rolagem coincide exatamente com a última parada. Feed vazio: o header e
+  "Você descobriu tudo" dividem a página.
 - **Virtualizado** porque o catálogo vai crescer e cada item é uma fotografia de
   tela cheia: `FlatList` com `getItemLayout` (altura conhecida, sem medição nem
   salto), `windowSize` 3 e 2 por lote. O post é `memo` e o `renderItem` é
@@ -626,13 +637,13 @@ AppScreen
   abrir e fechar o feed não refaz o terreno, não recria as `SkImage`, não
   recalcula os caminhos, não recarrega sprites e não reinicia a câmera.
 - **A barra de ações** (`shared/ui/ActionBar.tsx`) é uma cápsula flutuante
-  centralizada na borda de baixo, com dois ícones: ◉ mundo e a carta do Discovery. **Ela é a
+  centralizada na borda de baixo, com dois ícones: a casinha do Mundo e a carta do Discovery. **Ela é a
   única navegação entre as duas telas.** Vale para o app inteiro: é renderizada por último em
   `app/index.tsx`, acima do mundo, do aparelho e das janelas, e nunca some. Por
   isso o feed e a leitura reservam `ESPACO_ACTION_BAR` no rodapé. A cápsula não
   desliza com as páginas; o `ativo` (o destino lógico) serve ao leitor de tela.
 - **UI moderna + micro-ícones em pixel art.** Um ícone em `shared/ui/icons.ts`
-  pode ser texto (o globo ◉, por enquanto) ou uma imagem (a carta do
+  pode ser texto ou uma imagem (a casinha do Mundo, `assets/ui/letter_home`, e a carta do
   Discovery, `assets/ui/Letter_Discovery`, 14×14). Imagem é desenhada **como
   foi feita**: sem tint, sem cor animada — quem mostra o ativo é o seletor
   passando por trás; o sprite fica parado. O tamanho é `TAMANHO_DO_SPRITE` =
@@ -1222,41 +1233,126 @@ Curiosity ─registrarAprendizado─▶ LearningResult
                                       │ (só 'aprendida')
                           app/index.tsx  aoAprender()
                                       │
-                    gerarEventosDeCrescimento(influencias)
+            world.avancarProgressao({ aprendidas: perfil.aprendidas })
                                       │
-                         world.aplicarEventos(eventos)
-                                      │
-                    aplicarEventosDeCrescimento(...)  → casas, fonte, caminhos…
+                 marcosPendentes(...)  →  aplicarMarcos(...)  → cabana, fogueira…
 ```
 
 - **A ponte mora em `app/index.tsx`** e em nenhum outro lugar. `learning` não
   importa `world` e `world` não importa `learning`; só a composição vê as duas.
-- **A composição não interpreta nada.** Ela não sabe que história vira casa nem
-  que astronomia vira observatório — passa a lista de influências inteira e o
-  engine do mundo decide. Qualquer `if (tema === …)` em `app/` é erro.
+- **A composição não interpreta nada.** Ela passa a jornada (as aprendidas, em
+  ordem) e o engine do mundo decide o que ela constrói. Qualquer
+  `if (tema === …)` em `app/` é erro.
 - **Quem diz o que é novo é o engine de learning.** `LearningScreen` embrulha
   `aprender` e só chama `onAprendido` quando o resultado é `'aprendida'`.
-  Curiosidade repetida devolve `'repetida'` e a ponte volta na hora: nenhuma
-  influência, nenhum evento, nenhuma construção.
+  Curiosidade repetida devolve `'repetida'` e a ponte volta na hora: nada
+  avança, nada nasce.
 - **O mundo cresce na hora do APRENDI**, com o aparelho ainda aberto.
   "Ver no mundo" não faz o mundo crescer: ele só fecha o aparelho (com a mesma
   animação de sempre) para revelar o que já aconteceu. Navegação não é regra de
   domínio.
-- **`useWorld.aplicarEventos(eventos)`** é a única porta de entrada, usada tanto
-  pela produção quanto pelo modo dev (`aplicarCrescimentoDev` monta um evento de
-  intensidade 1 e chama a mesma função). Ela lê o estado **dentro** do updater
-  (`setEstado((s) => …)`), para duas aprendizagens seguidas não se atropelarem.
-  O `rng` tem estado, então o updater precisa rodar uma vez só — hoje roda,
-  porque o app não usa `StrictMode`.
+- **`useWorld.avancarProgressao(progresso)`** é a porta do conhecimento. O
+  crescimento **comum** por evento (`aplicarEventos`: casas, casa maior, mina,
+  observatório) continua existindo, mas hoje só o modo dev o usa
+  (`aplicarCrescimentoDev`). As duas leem o estado **dentro** do updater
+  (`setEstado((s) => …)`), para duas aprendizagens seguidas não se atropelarem,
+  e usam o mesmo gerador (semente + `growthSequence`). O `rng` tem estado, então
+  o updater precisa rodar uma vez só — hoje roda, porque o app não usa
+  `StrictMode`.
 
-### Comportamento temporário (natureza)
+## Progressão da vila (engine/marcos.ts)
 
-As curiosidades de hoje têm influência de `vegetacao`, que ainda cai em
-`crescerVegetacao` (ver o aviso em `world/engine/growth.ts`): aprender a
-curiosidade de natureza faz nascer **uma árvore**, não uma construção. Isso é o
-sistema legado, mantido de propósito até a natureza ser redesenhada — o mundo
-selvagem pertence à seed, e conhecimento de natureza deveria virar coisa
-construída (jardim, pomar, viveiro). Não mexa nisso sem tratar o tema inteiro.
+O crescimento da civilização deixou de ser "cada curiosidade gera um prédio do
+tema dela" (10 de astronomia = 10 observatórios). Agora ele é uma **progressão
+acumulada**, por **degraus** — cada um acontece uma vez, num limiar do total
+aprendido.
+
+> **Regra conceitual:** a vila cresce tanto **adicionando** novas construções
+> (para os lados) quanto **evoluindo** construções existentes (para cima, no
+> mesmo lugar); prédios especiais futuros também poderão ter tiers e upgrades.
+
+```
+mundo selvagem ──1──▶ CABANA            criar    marco-inicial (funda a vila)        ┐
+               ──3──▶ FOGUEIRA          criar    marco-inicial (no coração da vila)  │ ACAMPAMENTO
+               ──5──▶ 2ª cabana         criar    comum         (anel das casas)      ┘ sem caminho
+               ──8──▶ casa              criar    comum         (anel das casas)      ┐
+                      + trilhas nível 1 caminhos               (finas, discretas)    │ ASSENTAMENTO
+               ──12─▶ 1ª cabana → casa  evoluir  evolucao      (criada por primeira-cabana)
+                      + trilhas nível 2 caminhos               (marcadas; terreiro)  ┘
+               ──16─▶ 2ª cabana → casa  evoluir  evolucao      (criada por segunda-cabana) ┐
+                      + rede nível 3    caminhos               (casas ligadas entre si)    │ VILA
+               ──20─▶ casa → casa grande evoluir evolucao      (a casa mais antiga que caiba)
+                      + rede nível 4    caminhos               (madura)                    ┘
+```
+
+A sequência a partir da 2ª cabana é **provisória**, para o playtest de 20
+curiosidades. O estágio (`estagioDaVila`, em settlements.ts) sai do nível dos
+caminhos: 0 = acampamento, 1–2 = assentamento, 3–4 = vila.
+
+- **Catálogo de dados** (`MARCOS`): `id` estável (vai para o save), `categoria`
+  (`marco-inicial`, `comum`, `evolucao`, e no futuro `marco-tematico`),
+  `condicao` (hoje só `totalAprendido`), **`efeito`**, `unico`, `nome`, `frase`
+  (notícia) e `historia` (toque). Degrau novo é uma entrada aqui.
+- **Três efeitos** (`EfeitoDoMarco`), sem `if` por tipo de prédio (o terceiro,
+  `caminhos { nivel }`, sobe a maturidade da rede — veja "Caminhos da
+  progressão", abaixo):
+  - `criar` `{ sprite, lugar }` — lugares `fundaVila`, `centroDaVila`,
+    `anelDasCasas`, `anelDasMaiores` (`colocarMarco`, sempre com o sprite real:
+    o espaço no chão é o dele). A 2ª cabana é um `criar` com o mesmo sprite da
+    1ª: o id do degrau é que a faz ser outra construção;
+  - `evoluir` `{ de, para, alvo }` — a construção do tipo `de` vira `para` no
+    **mesmo lugar**. Serve para qualquer tier (cabana → casa → casa grande, e no
+    futuro observatório → avançado, mina → complexo mineiro, prédios centrais).
+- **Alvo da evolução, determinístico** (`AlvoDaEvolucao`): `criadaPor` pega a
+  construção que um degrau de criação fez nascer (a identidade dela é o
+  `marco.id` da criação, que nunca muda); `maisAntiga` pega a mais antiga do
+  tipo `de` na ordem da lista do mundo (a ordem de criação, que vai para o
+  save). Nada de sorteio nem relógio. No degrau 20, a mais antiga é a 1ª cabana
+  (já casa desde o 12): o primeiro abrigo é o que mais cresce.
+- **Evoluir não apaga a história.** Posição, `marco` (criação: gatilho e
+  contribuintes), `origemConhecimentoId` e `settlementId` ficam; mudam o
+  `tipo` e a aparência (orientação/variante, para a casa diagonal), e entra um
+  capítulo em `evolucoes: [{ marco, gatilho, contribuintes, de, para }]`. Não
+  nasce uma segunda construção por cima: a lista troca o elemento no mesmo índice.
+- **Cabe crescer?** (`cabeEvoluir`): o espaço do tipo novo precisa de terreno
+  firme longe da água, não cruzar outra construção (sem folga: chegar perto
+  pode, subir por cima não), e ficar fora da praça e da rua. Footprint, toque e
+  desenho seguem o `tipo`, então se atualizam sozinhos. Se não couber, o degrau
+  fica pendente — com `maisAntiga`, tenta a próxima candidata.
+- **`marcosPendentes(progresso, crescimento)`** é a regra, pura e
+  **idempotente**: o que já aconteceu — criado **ou** evoluído
+  (`degrausQueJaAconteceram`) — nunca volta. Reabrir o app, reprocessar o save ou
+  aprender uma repetida não duplica nada; o que ficou sem lugar é tentado de
+  novo na próxima vez. Chegar a vários degraus de uma vez (um save antigo) dá o
+  mesmo resultado que chegar um por um: o catálogo cria antes de evoluir.
+- **A origem é a verdade da jornada** (as N primeiras aprendidas), mesmo que o
+  degrau aconteça depois.
+- **Tocar:** `historiaDoElemento(elemento)` devolve a criação, as evoluções e o
+  capítulo `atual` (o mais recente). O balão conta o `atual` — numa cabana que
+  virou casa: "Este foi o primeiro abrigo do seu mundo. Com novos conhecimentos,
+  ele cresceu." e "12 descobertas, a última: …". A história inteira fica pronta
+  para uma tela de histórico futura.
+- **Notícias:** criação e evolução viram notícia do World Pulse e levam a câmera
+  até lá (`destaque`); só a criação conta como "nascimento" para as conquistas.
+- **Save:** nenhum formato novo. `marco` e `evolucoes` são campos opcionais do
+  `GrowthElement`, que já é salvo inteiro. Os ids da sequência anterior do
+  playtest (`vila-casa-5`, `vila-casa-grande-12`, `vila-casa-16`,
+  `vila-casa-grande-20`) ficam num catálogo **legado**: não acontecem mais, mas
+  quem já os tem no save continua lendo a própria história. A casa dos 8 manteve
+  o id (`vila-casa-8`). Recomeçar a jornada recria o mundo, e tudo volta a ser
+  conquistado.
+- **Lugar dos marcos:** a cabana usa as regras da primeira vila (terreno, água,
+  espaço, centralidade) para escolher o centro, cria o `Settlement` e se põe no
+  anel das casas. A fogueira vai o mais perto possível do centro, **dentro** da
+  praça reservada — é o único, junto da fonte, que pode ocupá-la (`NO_CORACAO`).
+  Não nasce fonte pela progressão: o coração da vila já é da fogueira.
+- **Onboarding:** a cabana é o "algo apareceu no seu mundo" do primeiro uso — a
+  notícia especial do Pulse, o foco da câmera e a conquista "Primeira casa!"
+  (que aceita a cabana como primeira casa).
+- **Temas não sumiram, mudaram de papel.** As influências continuam no perfil
+  (`porInfluencia`, `porTema`); `gerarEventosDeCrescimento` e o crescimento por
+  evento continuam no código. Eles são a base dos marcos temáticos e das
+  combinações — só não constroem mais um prédio por curiosidade.
 
 ## Crescimento do mundo (world/engine/growth.ts)
 
@@ -1433,8 +1529,51 @@ caminho (até `MARGEM_CAMINHO`, 1 tile). Plantas do jogador não abrem clareira.
 ## Caminhos da vila (engine/paths.ts)
 
 `Settlement.caminhos: PathTile[]` (`{ x, y, tipo: 'principal' | 'secundario' |
-'acesso' }`) é a rede de terra batida. Ela pertence à civilização, como as
-construções; a natureza não sabe dela.
+'acesso', forca? }`) é a rede de terra batida. Ela pertence à civilização, como
+as construções; a natureza não sabe dela. Há dois jeitos de ela nascer.
+
+### Caminhos da progressão (`redeDaVila`)
+
+- **Nascem com a vila, não antes.** Cabana + fogueira + cabana ainda é um
+  acampamento: nenhum caminho. A rede aparece e amadurece pelos degraus
+  `caminhos` do catálogo (8, 12, 16 e 20), que sobem `Settlement.nivelDosCaminhos`
+  (0 a 4). Quanto cada nível desenha fica em `NIVEIS_DA_REDE`.
+- **Amadurece pela presença, não pela largura.** "Primeiro o caminho aparece,
+  depois se firma, e só por último se organiza." O traçado tem sempre **um
+  tile**; cada nível define `espessura` (largura visual em fração de tile, com
+  teto de 1 tile: ≈2 px nas primeiras trilhas, ≈3 px nos 20), `cobertura`
+  (quanto da trilha já é terra — o resto continua grama; a terra aparece
+  primeiro no meio, em tufos), `opacidade`, `curva` (quanto o traçado ondula:
+  menos nos níveis altos — é a "organização") e o `terreiro` (pequeno, ralo:
+  1,2 → 1,8 tile). Esses três valores visuais viajam em cada `PathTile`
+  (`forca`, `espessura`, `cobertura`), e o desenho os interpreta.
+- **Refeita por inteiro** (`comRedeRefeita`, em growthElements) sempre que a
+  vila muda — construção nova, evolução ou nível. Determinística (seed +
+  construções + nível), então sempre combina com a vila de agora; por isso a
+  evolução não precisa desviar da rua (`cabeEvoluir` não olha caminho).
+- **Trajeto orgânico:** rota em 8 direções sobre um campo de custo suave
+  (`ONDULACAO`, colinas invisíveis de ~6 tiles), depois suavizada e ondulada de
+  lado (`AMPLITUDE_DA_CURVA`, `ONDA_DA_CURVA`) com a onda indo a zero nas pontas,
+  e só então de volta a tiles — sem entrar em construção nem água. Passos
+  diagonais ganham o tile da quina (`continua`), para a trilha fina não se partir.
+- **Forma da rede:** cada construção liga a porta ao fogo — ou à trilha que já
+  existe, o que for mais barato (galhos, não tentáculos); as duas mais perto do
+  fogo são os eixos (um pouco mais legíveis, não mais largos). Do nível 2 em
+  diante, um terreiro gasto em volta do fogo; do 3, cada casa também se liga à
+  vizinha mais próxima.
+- **Desenho** (`render/pathPixels.ts`): pixel a pixel, como o terreno — a
+  presença dos tiles é interpolada com tremor suave, e a `espessura` vira o
+  limiar dessa presença (1 tile corta em 0,5; meio tile, em 0,75). Dentro da
+  trilha, a `cobertura` decide quais pixels já são terra, por um pontilhado em
+  tufos mais cheio no meio (`TERRA_NA_BEIRA`, `TUFO`); a `forca` é a
+  opacidade. Trilha nova: grama gasta pontilhada. Madura: terra batida fina.
+- **O terreiro é o embrião da praça.** Quando a fogueira evoluir para fonte (um
+  degrau `evoluir { de: 'fogueira', para: 'fonte' }` — ainda não está no
+  catálogo), `aplicarMarcos` registra `vila.fonte` no lugar do fogo: a praça
+  nasce de um chão que já existia, e as regras de praça (`areaDaPraca`,
+  `referenciaDaVila`) passam a valer a partir da fonte. A fonte não aparece do nada.
+
+### Caminhos do crescimento por evento (modo dev)
 
 - **A praça abre a rede.** Quando a fonte nasce, `criarPraca` marca um disco
   irregular de ~5,5 tiles em volta dela (menos a fonte e as construções) como
@@ -1475,10 +1614,33 @@ para baixo do nível do mar, então a costa se dissolve naturalmente, sem moldur
 quadrada. Medido em 5 seeds: nenhuma terra nas bordas, com 18 a 21 tiles de
 oceano livre, e a massa principal continua com 24% a 47% do mapa.
 
-## Escala do mundo (ESCALA_MUNDO)
+## Escala do mundo (engine/escala.ts)
 
-O mundo tem `W` x `H` tiles (hoje 480x320). `ESCALA_MUNDO = W / 150` (hoje 3,2)
-compara isso com o mundo original (150x100) e mantém tudo calibrado:
+**A cabana é a unidade de escala.** Sprites têm tamanho fixo em pixels de arte
+(a cabana, 22×15 px); o que se ajusta é quanto mundo existe em volta deles, e
+isso mora num arquivo só, `engine/escala.ts`:
+
+| Constante | Hoje | O que muda |
+|---|---|---|
+| `PIXELS_POR_TILE` | 4 (era 3) | relevo maior ou menor em volta da cabana, sem gerar tile a mais |
+| `TILES_LARGURA` / `TILES_ALTURA` | 480 × 320 | quanto mundo existe (mais ilhas, mais espaço) — geração e colocação crescem junto |
+
+- **O mapa é uma imagem de `TILES × PIXELS_POR_TILE`** (1920×1280 hoje, 9,8 MB;
+  era 1440×960, 5,5 MB). O iPhone já fechou o app por memória na recriação do
+  mundo (veja "Recriar o mundo é em duas fases"): suba devagar.
+- **Nada precisa de recalibração ao mudar `PIXELS_POR_TILE`:** o espaço das
+  construções sai do tamanho da arte (`ARTE_PX` em `footprint.ts`, via
+  `emTiles`), e o toque também (`selecao.ts`). O resto (colocação, vilas,
+  natureza) é medido em tiles e não depende de pixel.
+- **Efeitos colaterais conhecidos, de propósito:** as árvores (PNGs pequenos,
+  espaçadas em tiles) ficam mais esparsas e menores em relação ao relevo — a
+  arte delas vai ser redesenhada maior; e a vila se espalha mais em pixels,
+  porque os anéis e a praça são medidos em tiles.
+- **O mundo gerado não muda:** a mesma seed dá os mesmos tiles de antes. Só o
+  DESENHO mudou — saves antigos continuam válidos, e nada construído cai na água.
+
+`ESCALA_MUNDO = W / TILES_DO_PROTOTIPO` (hoje 3,2) compara os tiles com o mundo
+original (150x100) e mantém tudo calibrado:
 
 - **Frequências do ruído são divididas pela escala** (`REGRAS.frequencia`). Sem
   isso, um mundo maior só ganharia *mais* ilhas do mesmo tamanho; dividindo, as
@@ -1488,11 +1650,12 @@ compara isso com o mundo original (150x100) e mantém tudo calibrado:
   `rules.ts`; em `growthPlacement.ts` as distâncias são escritas em **unidades**
   (1 unidade = 1 tile do mundo 150x100) e convertidas por `unidades()`. Assim,
   mudar `W`/`H` não exige recalibrar as regras de colocação.
-- Custo por mundo (medido no Node, 3 seeds): gerar ~75 ms, desenhar o terreno
-  ~74 ms, buffer de 5,3 MB (1440x960). Só acontece quando o mundo muda (mundo novo,
-  semente, nível do mar) — colocar elementos não paga nada disso.
-- No zoom mínimo cada pixel de arte ocupa ~0,9 ponto de tela; como o iPhone tem 3
-  pixels físicos por ponto, continua nítido.
+- Custo por mundo (Node, e entre parênteses sem JIT, perto de um interpretador
+  como o Hermes): gerar ~80 ms (1,4 s), desenhar o terreno ~110 ms (1,3 s — era
+  0,5 s com blocos de 3×3). Só acontece quando o mundo muda (mundo novo, semente,
+  nível do mar) e ao abrir o app — colocar elementos não paga nada disso.
+- No zoom mínimo cada pixel de arte ocupa ~0,66 ponto de tela; com 3 pixels
+  físicos por ponto no iPhone, continua nítido.
 
 ## Colocação do crescimento (world/engine/growthPlacement.ts)
 
@@ -1687,18 +1850,51 @@ useColors()                        → o que os componentes leem
   seguidos (no máximo 1,5 s entre um e outro; se passar, a contagem recomeça)
   ativam; mais 5 desativam. O estado fica em `useDevMode` e **não é salvo**.
 - Com o modo ativo:
-  - a tela Configurações mostra a seção "Desenvolvedor": semente + "Gerar com
-    esta semente", slider de nível do mar (gera de novo ao soltar) e legenda;
+  - a tela Configurações mostra a seção "Desenvolvedor", com a **Simulação da
+    jornada** em cima e o **Terreno** embaixo (semente + "Gerar com esta
+    semente", slider de nível do mar e a legenda das cores). Os botões de
+    crescimento por evento (povoamento, infraestrutura…) saíram: a jornada se
+    testa pelo simulador;
+  - com o mundo à vista, um controle flutuante do simulador ("Jornada 9/20",
+    +1, Marco, ▶/⏸) fica no alto do mapa;
   - toque longo no mapa mostra no aviso de baixo o bioma, a altitude e a umidade
     do tile tocado (`useMapCamera.paraMapa` desfaz o zoom/deslocamento e
     `engine/inspect.ts` monta o texto).
 - "Novo mundo" e "Gerar com esta semente" mantêm o nível do mar atual; o slider
   mantém a semente atual.
 
+### Simulação da jornada
+
+Para testar a progressão real (0 a 20) sem ler curiosidade por curiosidade.
+**Não é um sistema paralelo:** cada passo faz o que o APRENDI faz —
+`aprendizado.aprender(curiosidade)` e, se deu 'aprendida', o mesmo `aoAprender`
+da composição. Daí em diante é a produção: progressão, criação, evolução,
+caminhos, câmera, banner, notícias, World Pulse, save.
+
+- **Qual curiosidade:** a primeira ainda não aprendida na ordem do catálogo
+  (`paraDescobrir`, a do feed). Sem sorteio; repetida não existe.
+- **Um passo por render** (`useSimuladorDaJornada`, em settings/hooks, genérico:
+  não conhece learning nem world): o aprendizado real parte do perfil do render,
+  então dois no mesmo instante se atropelariam. Um estado só —
+  `{ alvo, intervalo } | null`: próxima = atual + 1; até o próximo marco = o
+  limiar; jornada inteira = o limite, 1,7 s entre passos. Pausar volta a `null`
+  e cancela a espera; como cada passo é um aprendizado inteiro, nunca sobra
+  estado pela metade. Continua de onde a jornada está.
+- **Espera o mundo:** não anda durante uma recriação nem com as boas-vindas na
+  frente (segue depois do "Continuar").
+- **Para assistir:** os botões fecham Configurações e Discovery antes de andar.
+- **Linha do tempo e próximo marco** saem do catálogo real (`etapasDaJornada`,
+  que agrupa `MARCOS` por limiar; os rótulos são o `nome` de cada degrau). O
+  estado de cada limiar usa a mesma regra do motor (`quemJaAconteceu`): ✓
+  aconteceu, … alcançado mas sem lugar ainda, ○ ainda não. "/20" é o maior
+  limiar do catálogo.
+- **Reiniciar simulação** pausa e chama o MESMO `recomecarJornada` do app (as
+  fases seguras de recriação do mundo).
+
 ## Mapa nítido e barato de atualizar
 
-Cada tile vira `ART` x `ART` (3x3) pixels de arte; com `W`/`H` de `rules.ts` isso dá
-o tamanho do buffer. Tudo é desenhado com
+Cada tile ocupa `ART` x `ART` pixels de arte (`PIXELS_POR_TILE`, hoje 4×4); com
+`W`/`H` isso dá o tamanho do buffer. Tudo é desenhado com
 `sampling={{ filter: FilterMode.Nearest }}`, então cada pixel vira um quadrado sem
 suavização em qualquer zoom.
 
@@ -1716,28 +1912,40 @@ câmera.
 
 **Textura do terreno** (`TEXTURA` em `palette.ts`, usada por `buildPixels`):
 
-O bioma é lido pela **cor e pela forma da região**: a base de cada bioma é uma
-cor só, e o detalhe é secundário e esparso. Nada de ruído pixel a pixel e nada
-de variação por tile inteiro (uma versão anterior tinha `mancha`, que pintava o
-tile todo de outro tom e criava quadrados visíveis — foi removida). Dois
-mecanismos:
+**O terreno é desenhado pixel a pixel, não tile a tile** (`buildPixels.ts`).
+Nenhum tile vira bloco chapado:
+
+- **Costa:** a altitude é interpolada dentro do tile (mais um tremor leve), e a
+  água é onde ela fica abaixo do mar — a costa segue a curva do relevo, não a
+  escada dos tiles. Mar raso ou fundo: a mesma regra da geração, com a
+  distância até a terra interpolada por pixel.
+- **Biomas:** a umidade é interpolada e lida num ponto deslocado por um campo
+  suave de alguns tiles (`DISTORCAO`) — é o que desmancha as bordas retas que o
+  ruído do mundo às vezes forma. Praia e lago são lidos do tile nesse mesmo
+  ponto.
+- **Manchas de tom:** um ruído suave de alguns tiles (`MANCHA`) escolhe claro,
+  base ou escuro, com pontilhado fino só na borda da mancha — poucas, e mais
+  escuras que claras.
+- **Custo sob controle:** a conta completa só é feita a até `RAIO_DA_FRONTEIRA`
+  tiles de alguma fronteira; um tile "calmo" preenche seus pixels de uma vez.
+  Cada cor é escrita como um Uint32. Os campos suaves têm hash só nos pontos da
+  grade do ruído.
+- **O desenho não muda o mundo:** tipos de tile, colocação e save são os
+  mesmos; perto da costa o desenho pode diferir do tile em até ~1,5 tile, e as
+  construções ficam a pelo menos `MARGEM_AGUA` tiles da água.
+
+Por cima disso, o detalhe esparso de sempre:
 
 - **`chance` + `motivos`**: chance de o tile receber **um** motivo — um desenho
   fixo de 2 a 3 pixels: tufo de grama, folhas caídas, capim seco, pedrinha,
   rachadura (nas duas diagonais) ou onda curta. Motivos não são desenhados em
   tiles de costa, para não sujar o litoral.
-- **`mistura`**: a borda do tile pode assumir a cor do bioma vizinho, sorteada em
-  blocos de 2x2 pixels — a fronteira fica **dentada como forma**, não granulada.
-  Só entre tiles de terra.
-- **Costa direcional (top-down inclinado):** a terra tem borda de areia em todos
-  os lados que encostam na água — é a linha de costa nítida. Já a faixa
-  azul-escura (`LINHA_COSTA`) só aparece na **água logo abaixo da terra**
-  (tile de água cujo vizinho de cima é terra), na primeira linha de pixels
-  (`ESPESSURA_COSTA_INFERIOR`). Água à esquerda, à direita ou acima da terra fica
-  com a cor normal. Isso sugere a "face" da ilha vista de cima e de leve pela
-  frente, em vez de um contorno completo.
+- **Costa direcional (top-down inclinado):** todo pixel de terra que encosta na
+  água vira areia — é a linha de costa nítida. Já a faixa azul-escura
+  (`LINHA_COSTA`) só aparece no pixel de **água logo abaixo da terra**. Isso
+  sugere a "face" da ilha vista de cima e de leve pela frente, em vez de um
+  contorno completo.
 - Tudo vem de `hash2(x, y, seed)`: mesma seed, mesmo terreno.
-- Medido: terreno desenha em ~45 ms por mundo.
 
 **Sprites:**
 
@@ -1745,6 +1953,19 @@ mecanismos:
   `assets/images/world/sprites/`, registrados em `render/spriteAssets.ts` e
   carregados uma vez por `hooks/useSpriteImages.ts` (um `useImage` por arquivo,
   em ordem fixa por causa da regra dos hooks).
+- **Pastas dos sprites:** `arvores/` (árvore, pinheiro, acácia, cacto), `casas/`,
+  `marcos/` (cabana, fogueira), `construcoes/` (fonte, mina) e `old/`. **Todo
+  sprite substituído vai para `old/`** em vez de ser apagado; nada ali é
+  carregado (o Metro só empacota o que tem `require`). Os arquivos e as chaves
+  de imagem têm o nome da **arte**; o engine continua com o nome do **papel** —
+  o papel `arvore` é desenhado com `arvores/oak_tree.png` (23×24 px) e as
+  variantes `oak_tree_v2.png` (20×24 px) e `oak_tree_v3.png` (24×22 px), via
+  `ARTE_DO_PAPEL` em `spriteAssets.ts`. Com mais de uma arte, cada uma tem um
+  peso (hoje 50%, 25% e 25%), e a escolha sai da **posição** do
+  elemento (hash) — a mesma árvore é
+  sempre a mesma arte, sem sorteio. Variante nova de qualquer papel é uma linha
+  a mais ali. A árvore antiga (11×8) está em
+  `old/arvore.png`.
 - **Residências:** `imagemDoElemento` escolhe o PNG por papel + orientação +
   variante: `casa` usa as quatro casas diagonais pequenas, `casa_maior` as quatro
   diagonais maiores. A casa frontal (`casa.png`) é o último recurso: só sairia

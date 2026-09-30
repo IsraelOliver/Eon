@@ -5,9 +5,10 @@
 // =====================================================================
 import { escolherOrientacaoCasa, escolherVariante } from './appearance';
 import { pontoDeEntrada } from './footprint';
-import { colocarCrescimento, colocarFonte } from './growthPlacement';
+import { cabeEvoluir, colocarCrescimento, colocarFonte, colocarMarco } from './growthPlacement';
+import type { EfeitoDoMarco, LugarDoMarco, MarcoAlcancado } from './marcos';
 import { combinarSementes, mulberry32 } from './noise';
-import { conectarARede, criarPraca, mesclarCaminhos } from './paths';
+import { conectarARede, criarPraca, mesclarCaminhos, redeDaVila } from './paths';
 import {
   VILA,
   assentamentoAlvo,
@@ -182,5 +183,178 @@ export function aplicarEventosDeCrescimento(
     }
   }
 
-  return { elementos: [...elementosAtuais, ...adicionados], adicionados, semLugar, settlements };
+  return { elementos: [...elementosAtuais, ...adicionados], adicionados, evoluidos: [], semLugar, settlements };
+}
+
+/** O coração da vila: quem pode ocupar a praça (a fogueira e, depois, a fonte). */
+const CORACAO: ReadonlySet<SpriteKey> = new Set(['fogueira', 'fonte']);
+
+/**
+ * Refaz a rede de caminhos da vila no nível dela, com as construções de agora.
+ * Nível 0 (acampamento): nenhum caminho. Determinístico — mesma vila, mesma rede.
+ */
+function comRedeRefeita(mundo: World, vila: Settlement, elementos: readonly GrowthElement[]): Settlement {
+  const nivel = vila.nivelDosCaminhos ?? 0;
+  const daVila = elementos.filter((e) => e.settlementId === vila.id);
+  const nucleo = daVila.find((e) => CORACAO.has(e.tipo)) ?? null;
+  const construcoes = daVila.filter((e) => e !== nucleo);
+  return { ...vila, caminhos: redeDaVila(mundo, vila, nucleo, construcoes, elementos.map(comoOcupante), nivel) };
+}
+
+/** Qual evento cada lugar de criação representa (o `evento` guardado na construção). */
+const EVENTO_DO_LUGAR: Record<LugarDoMarco, WorldGrowthKind> = {
+  fundaVila: 'desenvolverPovoamento',
+  centroDaVila: 'desenvolverPovoamento',
+  anelDasCasas: 'desenvolverPovoamento',
+  anelDasMaiores: 'melhorarInfraestrutura',
+};
+
+/**
+ * Qual construção uma evolução pega — determinístico, na ordem da lista do
+ * mundo (a ordem de criação, que vai para o save). Só vale quem ainda é do tipo
+ * `de` e onde o tipo novo CABE no mesmo lugar.
+ */
+function alvoDaEvolucao(
+  efeito: Extract<EfeitoDoMarco, { tipo: 'evoluir' }>,
+  elementos: readonly GrowthElement[],
+  cabe: (elemento: GrowthElement) => boolean,
+): GrowthElement | null {
+  const candidatos = elementos.filter((e) => {
+    if (e.tipo !== efeito.de) return false;
+    // `criadaPor`: a identidade da construção é o degrau que a criou
+    return efeito.alvo.tipo === 'criadaPor' ? e.marco?.id === efeito.alvo.marco : true;
+  });
+  return candidatos.find(cabe) ?? null;
+}
+
+/**
+ * Os degraus da progressão chegando ao mapa (engine/marcos.ts) — o crescimento
+ * principal da civilização. Três efeitos:
+ *
+ * - **criar**: uma construção nova no lugar da vila que o degrau pede;
+ * - **evoluir**: uma construção existente sobe de estágio NO MESMO LUGAR. Nada
+ *   da história é apagado — posição, criação (`marco`) e `origemConhecimentoId`
+ *   ficam; o tipo e a aparência mudam, e o capítulo entra em `evolucoes`. Se o
+ *   novo estágio é a fonte, a vila passa a ter praça (`vila.fonte`);
+ * - **caminhos**: a rede da vila sobe de nível.
+ *
+ * No fim, se a vila tem caminho e algo mudou, a rede é REFEITA inteira com as
+ * construções de agora (paths.ts, `redeDaVila`) — é o que mantém trilha e casa
+ * coerentes depois de uma evolução.
+ *
+ * Processa na ordem recebida (a do catálogo): a cabana funda a vila antes de a
+ * fogueira procurar o centro dela, e quem cria vem antes de quem evolui o que
+ * foi criado — então chegar a vários degraus de uma vez (um save antigo) dá o
+ * mesmo resultado que chegar a um por um. Um degrau sem lugar, ou sem
+ * construção que caiba evoluir, vai para `semLugar` e continua pendente. As
+ * listas recebidas não são alteradas.
+ */
+export function aplicarMarcos(
+  mundo: World,
+  elementosAtuais: readonly GrowthElement[],
+  settlementsAtuais: readonly Settlement[],
+  pendentes: readonly MarcoAlcancado[],
+  rng: Rng,
+): GrowthResult {
+  const elementos: GrowthElement[] = [...elementosAtuais];
+  const adicionados: GrowthElement[] = [];
+  const evoluidos: GrowthElement[] = [];
+  const semLugar: WorldGrowthKind[] = [];
+  const avisos: string[] = [];
+  let settlements: Settlement[] = [...settlementsAtuais];
+  /** Vilas que mudaram nesta execução: a rede delas é refeita no fim. */
+  const mudaram = new Set<string>();
+
+  for (const { definicao, origem } of pendentes) {
+    const efeito = definicao.efeito;
+
+    if (efeito.tipo === 'caminhos') {
+      const vila = assentamentoAlvo(settlements);
+      if (!vila) {
+        semLugar.push('desenvolverPovoamento');
+        continue; // sem vila ainda: o degrau espera
+      }
+      settlements = substituir(settlements, { ...vila, nivelDosCaminhos: efeito.nivel });
+      mudaram.add(vila.id);
+      avisos.push(definicao.frase);
+      continue;
+    }
+
+    if (efeito.tipo === 'evoluir') {
+      const alvo = alvoDaEvolucao(efeito, elementos, (e) => {
+        const outros = elementos.filter((o) => o !== e).map(comoOcupante);
+        const vila = settlements.find((s) => s.id === e.settlementId);
+        return cabeEvoluir(mundo, outros, efeito.para, e.x, e.y, vila);
+      });
+      if (!alvo) {
+        semLugar.push(efeito.para === 'casa_maior' ? 'melhorarInfraestrutura' : 'desenvolverPovoamento');
+        continue;
+      }
+      const capitulo = {
+        marco: origem.id,
+        gatilho: origem.gatilho,
+        contribuintes: [...origem.contribuintes],
+        de: alvo.tipo,
+        para: efeito.para,
+      };
+      // mesmo objeto conceitual: tudo o que ele era continua, com o tipo novo
+      let evoluido: GrowthElement = { ...alvo, tipo: efeito.para, evolucoes: [...(alvo.evolucoes ?? []), capitulo] };
+      const vila = settlements.find((s) => s.id === alvo.settlementId);
+      if (vila) {
+        evoluido = comAparencia(evoluido, vila, mundo.seed); // casa ganha orientação/variante
+        // o coração virou fonte: a vila passa a ter praça, no lugar do fogo
+        if (efeito.para === 'fonte') settlements = substituir(settlements, { ...vila, fonte: { x: alvo.x, y: alvo.y } });
+        mudaram.add(vila.id);
+      }
+      elementos[elementos.indexOf(alvo)] = evoluido;
+      evoluidos.push(evoluido);
+      continue;
+    }
+
+    // criar: uma construção nova na vila
+    const ocupantes = elementos.map(comoOcupante);
+    let vila = assentamentoAlvo(settlements);
+
+    // O primeiro sinal de civilização escolhe onde a vila nasce — com as mesmas
+    // regras de sempre da primeira vila (terreno, água, espaço, centralidade).
+    if (!vila && efeito.lugar === 'fundaVila') {
+      const nucleo = colocarCrescimento(mundo, ocupantes, { tipo: 'desenvolverPovoamento', intensidade: 1 }, rng);
+      if (nucleo.status === 'colocado') {
+        vila = criarAssentamento(settlements, nucleo.colocacao.x, nucleo.colocacao.y);
+      }
+    }
+
+    const evento = EVENTO_DO_LUGAR[efeito.lugar];
+    const lugar = vila ? colocarMarco(mundo, ocupantes, efeito.sprite, efeito.lugar, vila, rng) : null;
+    if (!vila || !lugar) {
+      semLugar.push(evento);
+      continue; // uma vila recém-escolhida sem o degrau não entra
+    }
+
+    const base: GrowthElement = {
+      evento,
+      tipo: efeito.sprite,
+      x: lugar.x,
+      y: lugar.y,
+      intensidade: 1,
+      settlementId: vila.id,
+      origemConhecimentoId: origem.gatilho,
+      marco: { id: origem.id, gatilho: origem.gatilho, contribuintes: [...origem.contribuintes] },
+    };
+    // casas ganham orientação e variante, como toda residência da vila
+    const elemento = comAparencia(base, vila, mundo.seed);
+    elementos.push(elemento);
+    adicionados.push(elemento);
+
+    vila = incluirNoAssentamento(vila, elemento.x, elemento.y);
+    settlements = substituir(settlements, vila);
+    mudaram.add(vila.id);
+  }
+
+  // a rede acompanha a vila: refeita por inteiro onde algo mudou
+  settlements = settlements.map((s) =>
+    mudaram.has(s.id) && (s.nivelDosCaminhos ?? 0) > 0 ? comRedeRefeita(mundo, s, elementos) : s,
+  );
+
+  return { elementos, adicionados, evoluidos, avisos, semLugar, settlements };
 }

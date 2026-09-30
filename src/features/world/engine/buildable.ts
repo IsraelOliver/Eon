@@ -39,6 +39,8 @@ export const MARGEM_AGUA: Partial<Record<SpriteKey, number>> = {
   casa: 2,
   casa_maior: 4, // construção importante: mais longe da borda
   fonte: 3,
+  cabana: 2,
+  fogueira: 2,
 };
 
 export function soloDoTile(mundo: World, x: number, y: number): Solo {

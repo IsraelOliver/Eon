@@ -40,6 +40,14 @@ export const MODELOS_AMBIENTAIS: Record<AssuntoDoMundo, readonly string[]> = {
     'A estrada já virou rota frequente da vila.',
   ],
   natureza: ['As árvores plantadas pelo conhecimento deram sombra hoje.'],
+  fogueira: [
+    'A fogueira estalou baixinho a noite toda.',
+    'A fogueira seguiu acesa até tarde.',
+  ],
+  cabana: [
+    'O dia passou calmo em volta da cabana.',
+    'A cabana segue firme no seu canto do mundo.',
+  ],
   casa: [
     'A vila amanheceu tranquila.',
     'A vila seguiu seu ritmo calmo hoje.',
@@ -54,10 +62,12 @@ export const MODELOS_AMBIENTAIS: Record<AssuntoDoMundo, readonly string[]> = {
 
 /** Ordem fixa dos assuntos: é ela que intercala as frases (veja `intercalar`). */
 const ORDEM: readonly AssuntoDoMundo[] = [
-  'observatorio', 'mina', 'fonte', 'caminho', 'natureza', 'casa', 'paisagem',
+  'observatorio', 'mina', 'fonte', 'fogueira', 'caminho', 'natureza', 'cabana', 'casa', 'paisagem',
 ];
 
-const CONSTRUCOES: readonly SpriteKey[] = ['casa', 'casa_maior', 'fonte', 'observatorio', 'mina'];
+const CONSTRUCOES: readonly SpriteKey[] = [
+  'casa', 'casa_maior', 'fonte', 'cabana', 'fogueira', 'observatorio', 'mina',
+];
 const NATURAIS: readonly SpriteKey[] = ['arvore', 'pinheiro', 'cacto', 'acacia', 'pedra', 'arbusto'];
 
 /**
@@ -77,6 +87,8 @@ export function assuntosPresentes(mundo: WorldSnapshot): AssuntoDoMundo[] {
     fonte: tem('fonte') || mundo.settlements.some((vila) => vila.fonte !== undefined),
     caminho: mundo.settlements.some((vila) => vila.caminhos.length > 0),
     natureza: NATURAIS.some(tem),
+    fogueira: tem('fogueira'),
+    cabana: tem('cabana'),
     casa: tem('casa') || tem('casa_maior'),
     // "Intocada" só é verdade enquanto nada foi construído.
     paisagem: !construido,

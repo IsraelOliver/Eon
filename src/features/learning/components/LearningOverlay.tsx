@@ -75,6 +75,7 @@ export function LearningOverlay({
         onConfiguracoes={onConfiguracoes}
         pulso={pulso}
         voltarAoTopo={voltarAoTopo}
+        visivel={aberto}
       />
     </Animated.View>
   );

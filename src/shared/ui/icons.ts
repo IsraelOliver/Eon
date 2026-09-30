@@ -21,7 +21,12 @@ export const ICONS = {
   gear: require('../../../assets/ui/gear_configuration.png'),
   /** A mesma engrenagem com o miolo escuro: é a que contrasta sobre fundo claro. */
   gearEscura: require('../../../assets/ui/gear_configuration-dark.png'),
-  mundo: '◉',
+  /**
+   * O ícone que leva ao Mundo: a casinha, pixel art 14×14 — par do ícone do
+   * Discovery, mesmo tamanho e mesma escala. Nunca recebe tint. Gerada com
+   * `-Escala3x 4`.
+   */
+  mundo: require('../../../assets/ui/letter_home.png'),
   /**
    * O ícone que abre o Discovery: pixel art 14×14, desenhada com as próprias
    * cores — nunca recebe tint. Arquivos gerados por `scripts/gerar-icone-ui.ps1`
@@ -42,6 +47,8 @@ export type IconeDoPulso = AssuntoDoMundo | 'conquista' | 'descoberta';
  */
 export const ICONS_DO_PULSO = {
   casa: '⌂',
+  cabana: '⌂',
+  fogueira: '♨︎',
   fonte: '◍',
   caminho: '⋯',
   observatorio: '☾',

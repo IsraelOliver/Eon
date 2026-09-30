@@ -9,6 +9,10 @@ export type SpriteKey =
   | 'casa_maior'
   /** Marco central da vila (no máximo uma por Settlement). */
   | 'fonte'
+  /** Marco inicial: o primeiro abrigo do mundo (engine/marcos.ts). */
+  | 'cabana'
+  /** Marco inicial: o lugar começa a virar núcleo (engine/marcos.ts). */
+  | 'fogueira'
   | 'observatorio'
   | 'mina'
   | 'arvore'
@@ -114,9 +118,69 @@ export interface GrowthElement {
    * Qual conhecimento fez isto existir. Para o mundo é um identificador OPACO:
    * ele não sabe o que significa. Quem traduz em título é a composição, que
    * conhece as duas features. Ausente em construções do modo dev e nas de saves
-   * anteriores a este campo.
+   * anteriores a este campo. Num marco, é o mesmo que `marco.gatilho`.
    */
   origemConhecimentoId?: string;
+  /**
+   * Presente só no que a PROGRESSÃO da vila criou (marcos e crescimento comum):
+   * qual degrau é, e a memória de quem o formou. O nome ficou `marco` porque já
+   * vai para o save.
+   */
+  marco?: OrigemDoMarco;
+  /**
+   * As vezes em que esta construção EVOLUIU, em ordem. Evoluir não apaga nada:
+   * posição, `marco` (a criação) e `origemConhecimentoId` ficam; só `tipo` (e a
+   * aparência) mudam, e o capítulo novo entra aqui. Ausente = nunca evoluiu.
+   */
+  evolucoes?: EvolucaoDaConstrucao[];
+}
+
+/** Um capítulo da vida de uma construção: ela subiu de estágio no mesmo lugar. */
+export interface EvolucaoDaConstrucao {
+  /** O degrau que causou a evolução (engine/marcos.ts). */
+  marco: MarcoId;
+  /** A curiosidade que completou esse degrau. Opaca para o mundo. */
+  gatilho: string;
+  /** As que contribuíram até ali, em ordem. */
+  contribuintes: string[];
+  /** O tipo antes e depois. */
+  de: SpriteKey;
+  para: SpriteKey;
+}
+
+/**
+ * Os degraus da progressão da vila (engine/marcos.ts). Ids ESTÁVEIS: vão para o
+ * save. Cada limiar é um id — é isso que impede o mesmo limiar de construir duas vezes.
+ */
+export type MarcoId =
+  | 'primeira-cabana'
+  | 'primeira-fogueira'
+  | 'segunda-cabana'
+  | 'vila-casa-8'
+  | 'evolucao-primeira-cabana'
+  | 'evolucao-segunda-cabana'
+  | 'evolucao-casa-grande-20'
+  | 'trilhas-8'
+  | 'trilhas-12'
+  | 'trilhas-16'
+  | 'trilhas-20'
+  // Legado: sequência anterior do playtest. Não acontecem mais, mas podem
+  // estar num save — continuam sendo lidos (LEGADO, em marcos.ts).
+  | 'vila-casa-5'
+  | 'vila-casa-grande-12'
+  | 'vila-casa-16'
+  | 'vila-casa-grande-20';
+
+/**
+ * A memória de origem de um marco. Os ids das curiosidades são OPACOS para o
+ * mundo, como `origemConhecimentoId`: quem os traduz em título é a composição.
+ */
+export interface OrigemDoMarco {
+  id: MarcoId;
+  /** A curiosidade que COMPLETOU o marco (a 1ª para a cabana, a 3ª para a fogueira). */
+  gatilho: string;
+  /** Todas as que contribuíram, na ordem em que foram aprendidas (o gatilho é a última). */
+  contribuintes: string[];
 }
 
 /**
@@ -134,11 +198,23 @@ export interface Settlement {
   quantidadeElementos: number;
   /** Posição da fonte, quando a vila já tem uma (no máximo uma por vila). */
   fonte?: { x: number; y: number };
-  /** Rede de caminhos da vila (praça inclusive). Vazia até a fonte nascer. */
+  /**
+   * Rede de caminhos da vila. Na progressão, é refeita por inteiro a cada
+   * mudança, a partir do `nivelDosCaminhos` (engine/paths.ts, `redeDaVila`).
+   */
   caminhos: PathTile[];
   /** Quantas rotas viraram eixo principal (as primeiras depois da praça). */
   viasPrincipais: number;
+  /**
+   * Quão madura é a rede de caminhos (0 a 4): 0 é acampamento, sem caminho;
+   * depois trilhas, cada vez mais marcadas e ligadas. Quem sobe é a progressão
+   * (efeito `caminhos`, engine/marcos.ts). Ausente = 0 (saves antigos).
+   */
+  nivelDosCaminhos?: NivelDosCaminhos;
 }
+
+/** Maturidade da rede de caminhos da vila. 0 = nenhum caminho (acampamento). */
+export type NivelDosCaminhos = 0 | 1 | 2 | 3 | 4;
 
 /** Função de cada trecho da rede: eixo da vila, ligação de grupo ou entrada de casa. */
 export type PathKind = 'principal' | 'secundario' | 'acesso';
@@ -148,6 +224,23 @@ export interface PathTile {
   x: number;
   y: number;
   tipo: PathKind;
+  /**
+   * Quão marcada é a terra aqui, de 0 a 1 — a OPACIDADE dos pixels de terra.
+   * Ausente = 1 (os caminhos do crescimento por evento, que já nascem feitos).
+   */
+  forca?: number;
+  /**
+   * Largura VISUAL da trilha, em fração de tile (0 a 1). O traçado da
+   * progressão tem sempre 1 tile; o desenho é que fica mais fino ou mais
+   * cheio. Ausente = 1.
+   */
+  espessura?: number;
+  /**
+   * Quanto da trilha já é terra (0 a 1): o resto dos pixels continua grama. É o
+   * "desgaste" — pouca cobertura parece grama gasta; muita, terra batida. A
+   * terra aparece primeiro no meio da trilha. Ausente = 1.
+   */
+  cobertura?: number;
 }
 
 /**
@@ -169,6 +262,10 @@ export interface GrowthResult {
   elementos: GrowthElement[];
   /** Só os criados nesta execução, na ordem dos eventos. */
   adicionados: GrowthElement[];
+  /** As construções que EVOLUÍRAM nesta execução, já no estágio novo (mesmo lugar). */
+  evoluidos: GrowthElement[];
+  /** O que mudou sem ser construção (a rede de caminhos, por exemplo), já em frase. */
+  avisos?: string[];
   /** Eventos que não encontraram lugar, na ordem em que foram processados. */
   semLugar: WorldGrowthKind[];
   /** Assentamentos depois desta execução (lista nova; a recebida não muda). */

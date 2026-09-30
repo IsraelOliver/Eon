@@ -1,3 +1,4 @@
+import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -31,6 +32,11 @@ type Props = {
   onConfiguracoes?: () => void;
   /** Muda de valor para o feed rolar até o topo. Só passa adiante. */
   voltarAoTopo?: number;
+  /**
+   * O aparelho está aberto e a tela à vista. A tela fica montada mesmo fechada,
+   * então é isto que diz se ela pode mandar na barra de status.
+   */
+  visivel?: boolean;
 };
 
 /**
@@ -42,9 +48,12 @@ type Props = {
  */
 export function LearningScreen({
   aprendizado, onAprendido, onVerMundo, pulso = null, onConfiguracoes, voltarAoTopo,
+  visivel = false,
 }: Props) {
   const c = useColors();
   const [abertaId, setAbertaId] = useState<CuriosityId | null>(null);
+  /** O header já rolou para fora de baixo da status bar: o alto é fotografia. */
+  const [headerFora, setHeaderFora] = useState(false);
 
   // A leitura procura no catálogo INTEIRO, não no feed: uma curiosidade
   // recém-aprendida continua aberta e legível até quem está lendo decidir sair.
@@ -83,11 +92,19 @@ export function LearningScreen({
 
   return (
     <View style={[styles.tela, { backgroundColor: c.fundoFeed }]}>
-      {/* O header termina, a timeline começa: duas regiões, uma acima da outra.
-          A barra de status segue o tema (_layout), como o header. */}
-      <LearningHeader onConfiguracoes={onConfiguracoes} pulso={pulso} />
+      {/* Com o header à vista, a barra de status segue o tema, como ele. Depois
+          que ele sobe, o alto da tela é fotografia escurecida: ícones claros. A
+          leitura tem o próprio fundo, e o `StatusBar` empilha. */}
+      {visivel && !aberta && headerFora && <StatusBar style="light" />}
 
-      <DiscoveryFeed curiosidades={visiveis} onLer={setAbertaId} voltarAoTopo={voltarAoTopo} />
+      <DiscoveryFeed
+        curiosidades={visiveis}
+        // O header mora na primeira página do feed e rola com ela.
+        cabecalho={<LearningHeader onConfiguracoes={onConfiguracoes} pulso={pulso} />}
+        onHeaderFora={setHeaderFora}
+        onLer={setAbertaId}
+        voltarAoTopo={voltarAoTopo}
+      />
 
       {aberta && (
         <CuriosityReader

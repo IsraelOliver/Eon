@@ -24,8 +24,12 @@ const SOMBRA_DO_TEXTO = comAlfa(MARCA.preto, 0.5);
 
 type Props = {
   curiosidade: CuriosityEntry;
-  /** A timeline inteira: o post É a área abaixo do header, não um cartão dentro dela. */
-  altura: number;
+  /**
+   * A página inteira: o post não é um cartão. Ausente no primeiro post, que
+   * ocupa (`flex: 1`) o que o header deixa da primeira página — sem depender de
+   * medir o header.
+   */
+  altura?: number;
   recuoTopo: number;
   recuoBase: number;
   /**
@@ -64,7 +68,7 @@ function Post({
       accessibilityLabel={`${NOMES_DE_TEMA[curiosidade.tema]}: ${curiosidade.titulo}`}
       accessibilityHint="Abre a curiosidade"
       onPress={onLer}
-      style={[styles.post, { height: altura }]}
+      style={[styles.post, altura === undefined ? styles.resto : { height: altura }]}
     >
       {({ pressed }) => (
         <>
@@ -140,6 +144,7 @@ export const DiscoveryPost = memo(Post);
 const styles = StyleSheet.create({
   // Sem raio e sem margem: o post é a tela.
   post: { width: '100%', justifyContent: 'flex-end', backgroundColor: MARCA.grafite }, // enquanto a foto carrega
+  resto: { flex: 1 },
 
   // Overlays do alto: absolutos, então não acrescentam altura nenhuma ao post
   // e a conta do snap continua igual.

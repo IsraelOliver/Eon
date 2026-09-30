@@ -4,6 +4,7 @@
 // A área tocável é VISUAL: existe só para seleção e não tem nada a ver com as
 // regras de colisão. Mexer aqui não muda onde as construções cabem.
 // =====================================================================
+import { emTiles } from './escala';
 import { retanguloDe } from './footprint';
 import type { GrowthElement, SpriteKey } from './types';
 
@@ -12,6 +13,8 @@ export const INSPECIONAVEIS: ReadonlySet<SpriteKey> = new Set<SpriteKey>([
   'casa',
   'casa_maior',
   'fonte',
+  'cabana',
+  'fogueira',
   'mina',
   'observatorio',
 ]);
@@ -21,18 +24,20 @@ export const NOME_DA_CONSTRUCAO: Partial<Record<SpriteKey, string>> = {
   casa: 'Casa da vila',
   casa_maior: 'Casa maior',
   fonte: 'Fonte da vila',
+  cabana: 'Cabana',
+  fogueira: 'Fogueira',
   mina: 'Mina',
   observatorio: 'Observatório',
 };
 
 /**
- * Tamanho tocável de quem não tem footprint, medido pela ARTE (px ÷ ART):
- * `mina.png` tem 17x9 px; o observatório é desenhado em caracteres, 9x8 px com
- * a margem do contorno.
+ * Tamanho tocável de quem não tem footprint, medido pela ARTE (px → tiles pela
+ * escala): `mina.png` tem 17x9 px; o observatório é desenhado em caracteres,
+ * 9x8 px com a margem do contorno.
  */
 const ALVO_SEM_FOOTPRINT: Partial<Record<SpriteKey, { largura: number; altura: number }>> = {
-  mina: { largura: 5.7, altura: 3 },
-  observatorio: { largura: 3, altura: 2.7 },
+  mina: { largura: emTiles(17), altura: emTiles(9) },
+  observatorio: { largura: emTiles(9), altura: emTiles(8) },
 };
 
 /** Folga para o dedo, em tiles. Sprites pequenos ficariam impossíveis sem isto. */

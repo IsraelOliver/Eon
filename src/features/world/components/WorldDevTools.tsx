@@ -5,32 +5,32 @@ import { useColors } from '@/shared/theme/colors';
 import { Button } from '@/shared/ui/Button';
 import { Slider } from '@/shared/ui/Slider';
 
-import type { WorldGrowthKind } from '../engine/types';
-
 type Props = {
   seed: number;
   nivelMar: number;
   faixaNivelMar: { min: number; max: number; passo: number };
   onGerarComSemente: (seed: number) => void;
   onMudarNivelMar: (nivelMar: number) => void;
-  /** Tipos do novo sistema de crescimento, com o nome do botão. */
-  crescimentos: { tipo: WorldGrowthKind; nome: string }[];
-  onCrescer: (tipo: WorldGrowthKind) => void;
 };
 
-/** Ferramentas de desenvolvedor do mundo: semente, nível do mar e crescimento. */
+/**
+ * Ferramentas do TERRENO: semente e nível do mar. A ferramenta principal do
+ * modo dev é a simulação da jornada (settings/components/SimuladorDaJornada);
+ * estas ficam para depurar o mundo gerado.
+ */
 export function WorldDevTools({
   seed,
   nivelMar,
   faixaNivelMar,
   onGerarComSemente,
   onMudarNivelMar,
-  crescimentos,
-  onCrescer,
 }: Props) {
   const c = useColors();
   return (
     <View style={styles.grupo}>
+      <Text style={[styles.titulo, { color: c.muted }]} accessibilityRole="header">
+        Terreno
+      </Text>
       {/* key: quando o mundo muda, o campo volta a mostrar a semente atual */}
       <CampoSemente key={seed} seed={seed} onGerar={onGerarComSemente} />
       <Text style={[styles.rotulo, { color: c.ink }]}>Nível do mar</Text>
@@ -42,13 +42,6 @@ export function WorldDevTools({
         onRelease={onMudarNivelMar}
         accessibilityLabel="Nível do mar"
       />
-      {/* Temporário: testar o novo sistema de crescimento sem curiosidades */}
-      <Text style={[styles.rotulo, { color: c.ink }]}>Crescimento</Text>
-      <View style={styles.grade}>
-        {crescimentos.map((cr) => (
-          <Button key={cr.tipo} label={cr.nome} onPress={() => onCrescer(cr.tipo)} style={styles.celula} />
-        ))}
-      </View>
     </View>
   );
 }
@@ -79,9 +72,8 @@ function CampoSemente({ seed, onGerar }: { seed: number; onGerar: (seed: number)
 }
 
 const styles = StyleSheet.create({
+  titulo: { fontSize: 12, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginTop: 16 },
   grupo: { gap: 8 },
   rotulo: { fontSize: 15 },
-  grade: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  celula: { flexBasis: '45%', flexGrow: 1 },
   campo: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 10, paddingVertical: 8, fontSize: 16 },
 });

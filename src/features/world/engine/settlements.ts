@@ -14,6 +14,20 @@ import { ESCALA_MUNDO } from './rules';
 import type { Settlement } from './types';
 
 /**
+ * O estágio da vila, dito em palavras — acampamento → assentamento → vila. Sai
+ * da maturidade dos caminhos, que a progressão sobe (engine/marcos.ts): sem
+ * caminho ainda é acampamento; trilhas fazem um assentamento; uma rede que
+ * liga tudo já é uma vila.
+ */
+export type EstagioDaVila = 'acampamento' | 'assentamento' | 'vila';
+
+export function estagioDaVila(s: Settlement): EstagioDaVila {
+  const nivel = s.nivelDosCaminhos ?? 0;
+  if (nivel === 0) return 'acampamento';
+  return nivel <= 2 ? 'assentamento' : 'vila';
+}
+
+/**
  * Raio (em TILES) da área livre em volta da fonte — o futuro centro da vila
  * (praça, cruzamento, início das ruas). Nenhuma construção pode invadi-la.
  * Medido a partir do centro visual da fonte.

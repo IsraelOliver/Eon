@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { gerarMundo } from '../engine/generate';
-import { CHAVES_DE_CIVILIZACAO, NOMES_DE_CRESCIMENTO } from '../engine/growth';
-import { aplicarEventosDeCrescimento, rngDeCrescimento } from '../engine/growthElements';
-import { escolherDestaque, type Destaque } from '../engine/destaque';
+import { NOMES_DE_CRESCIMENTO } from '../engine/growth';
+import { aplicarEventosDeCrescimento, aplicarMarcos, rngDeCrescimento } from '../engine/growthElements';
+import { escolherDestaque, fraseDeCrescimento, type Destaque } from '../engine/destaque';
+import { marcosPendentes, type ProgressoDaJornada } from '../engine/marcos';
 import { descreverTile } from '../engine/inspect';
 import { FAIXA_NIVEL_MAR, FAIXA_SEMENTE, REGRAS } from '../engine/rules';
 import type {
-  GrowthElement, GrowthResult, Settlement, World, WorldGrowthEvent, WorldGrowthKind, WorldSnapshot,
+  GrowthElement, GrowthResult, Settlement, World, WorldGrowthEvent, WorldSnapshot,
 } from '../engine/types';
 import { ART, ART_H, ART_W, desenharTerreno } from '../render/buildPixels';
 import { montarLegenda } from '../render/legend';
@@ -141,8 +142,45 @@ export function useWorld(salvo?: WorldSnapshot | null) {
   );
 
   /**
-   * Aplica eventos de crescimento ao mundo. É por aqui que o conhecimento chega
-   * ao mapa: a composição traduz influências em eventos e chama esta função.
+   * A progressão da vila: o caminho PRINCIPAL do conhecimento até o mapa. A
+   * composição passa a jornada (as aprendidas, em ordem) e o mundo decide quais
+   * marcos ela alcançou e ainda não tem (engine/marcos.ts).
+   *
+   * Idempotente: sem marco pendente, o estado não muda — pode ser chamada de novo
+   * com o mesmo progresso sem duplicar nada. Mesmo gerador determinístico dos
+   * eventos (semente + `growthSequence`), lido dentro do updater.
+   */
+  function avancarProgressao(progresso: ProgressoDaJornada) {
+    setEstado((s) => {
+      const pendentes = marcosPendentes(progresso, s.crescimento, s.settlements);
+      if (pendentes.length === 0) return s;
+      const rng = rngDeCrescimento(s.mundo.seed, s.growthSequence);
+      const r = aplicarMarcos(s.mundo, s.crescimento, s.settlements, pendentes, rng);
+      // novidade é o que nasceu E o que evoluiu: os dois levam a câmera até lá
+      const novidades = [...r.adicionados, ...r.evoluidos];
+      return {
+        ...s,
+        crescimento: r.elementos,
+        settlements: r.settlements,
+        growthSequence: s.growthSequence + 1,
+        mensagem:
+          novidades.length > 0 || r.avisos?.length
+            ? [...novidades.map(fraseDeCrescimento), ...(r.avisos ?? [])].join(' ')
+            : 'Não foi encontrado um local válido para esse crescimento.',
+        idMensagem: s.idMensagem + 1,
+        destaque: escolherDestaque(novidades),
+        // nascimento é só o que NASCEU (é o que as conquistas contam)
+        nascimento:
+          r.adicionados.length > 0 ? [...(s.nascimento ?? []), ...r.adicionados] : s.nascimento,
+      };
+    });
+  }
+
+  /**
+   * Aplica eventos de crescimento ao mundo — o crescimento COMUM, por evento
+   * (casas, casas maiores, mina, observatório). Hoje o aprendizado não passa
+   * mais por aqui (quem constrói é a progressão, acima); o modo dev passa, e é
+   * a base para os marcos temáticos e as evoluções.
    *
    * O estado é lido **dentro** do updater, para duas aprendizagens seguidas não
    * se atropelarem: cada uma enxerga a `growthSequence` deixada pela anterior.
@@ -246,19 +284,15 @@ export function useWorld(salvo?: WorldSnapshot | null) {
     mudarNivelMar(nivelMar: number) {
       recriar(mundo.seed, nivelMar);
     },
-    /** (dev) Crescimentos da civilização, com o nome para o botão (natureza vem da seed). */
-    crescimentos: CHAVES_DE_CIVILIZACAO.map((tipo) => ({ tipo, nome: NOMES_DE_CRESCIMENTO[tipo] })),
     /**
-     * O conhecimento chegando ao mapa. A composição traduz influências em
-     * eventos e diz de qual conhecimento vieram — para o mundo, só um id opaco.
+     * O conhecimento chegando ao mapa: a jornada acumulada vira marcos da vila.
+     * Para o mundo, os ids das curiosidades são opacos.
      */
+    avancarProgressao,
+    /** Crescimento por evento — hoje sem uso no app; base dos futuros marcos temáticos. */
     aplicarEventos,
     /** Só as construções: o que dá para tocar e inspecionar. */
     construcoes: crescimento,
-    /** (dev) Um evento de intensidade 1, pelo mesmo caminho da produção. */
-    aplicarCrescimentoDev(tipo: WorldGrowthKind) {
-      aplicarEventos([{ tipo, intensidade: 1 }]);
-    },
     /** Recebe um ponto em pixels de arte e mostra no aviso o que há naquele tile. */
     inspecionar(artX: number, artY: number) {
       const texto = descreverTile(mundo, Math.floor(artX / ART), Math.floor(artY / ART));

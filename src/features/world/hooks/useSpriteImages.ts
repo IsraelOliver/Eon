@@ -9,12 +9,16 @@ import { IMAGENS, type ImagemKey } from '../render/spriteAssets';
  */
 export function useSpriteImages(): Record<ImagemKey, SkImage | null> {
   return {
-    arvore: useImage(IMAGENS.arvore),
+    oak_tree: useImage(IMAGENS.oak_tree),
+    oak_tree_v2: useImage(IMAGENS.oak_tree_v2),
+    oak_tree_v3: useImage(IMAGENS.oak_tree_v3),
     pinheiro: useImage(IMAGENS.pinheiro),
     cacto: useImage(IMAGENS.cacto),
     acacia: useImage(IMAGENS.acacia),
     mina: useImage(IMAGENS.mina),
     fonte: useImage(IMAGENS.fonte),
+    cabana: useImage(IMAGENS.cabana),
+    fogueira: useImage(IMAGENS.fogueira),
     casa: useImage(IMAGENS.casa),
     casa_frente_v1: useImage(IMAGENS.casa_frente_v1),
     casa_tras_v1: useImage(IMAGENS.casa_tras_v1),

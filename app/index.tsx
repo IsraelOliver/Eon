@@ -17,7 +17,11 @@ import {
   type NoticiaDoMundo, type WorldPulseItem,
 } from '@/features/learning/presentation/worldPulse';
 import { SettingsMenu } from '@/features/settings/components/SettingsMenu';
+import {
+  SimulacaoFlutuante, SimuladorDaJornada, type Simulador,
+} from '@/features/settings/components/SimuladorDaJornada';
 import { useDevMode } from '@/features/settings/hooks/useDevMode';
+import { useSimuladorDaJornada } from '@/features/settings/hooks/useSimuladorDaJornada';
 import { ActionToast } from '@/features/world/components/ActionToast';
 import { BiomeLegend } from '@/features/world/components/BiomeLegend';
 import { BuildingCallout } from '@/features/world/components/BuildingCallout';
@@ -25,8 +29,12 @@ import { GrowthBanner } from '@/features/world/components/GrowthBanner';
 import { WorldDevTools } from '@/features/world/components/WorldDevTools';
 import { WorldMap } from '@/features/world/components/WorldMap';
 import { assuntoDeCrescimento, fraseDeCrescimento } from '@/features/world/engine/destaque';
+import {
+  definicaoDoMarco, etapasDaJornada, historiaDoElemento, quemJaAconteceu,
+} from '@/features/world/engine/marcos';
+import { assentamentoAlvo, estagioDaVila } from '@/features/world/engine/settlements';
+import { paraDescobrir } from '@/features/learning/presentation/descoberta';
 import { noticiaAmbiental } from '@/features/world/engine/pulsoAmbiental';
-import { gerarEventosDeCrescimento } from '@/features/world/engine/growth';
 import { NOME_DA_CONSTRUCAO } from '@/features/world/engine/selecao';
 import type { GrowthElement } from '@/features/world/engine/types';
 import { useLearning } from '@/features/learning/hooks/useLearning';
@@ -40,6 +48,7 @@ import {
   definirAparencia, useColors, usePreferenciaDeAparencia, type ThemePreference,
 } from '@/shared/theme/colors';
 import * as SplashScreen from 'expo-splash-screen';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ActionBar, type AcaoDaBarra } from '@/shared/ui/ActionBar';
 import { ICONS } from '@/shared/ui/icons';
 import { deslocamentoDoMundo } from '@/shared/ui/navegacao';
@@ -134,6 +143,7 @@ function Jogo({ save }: { save: SaveData | null }) {
   /** Sem save, a jornada é nova: as boas-vindas ao Mundo ainda não foram vistas. */
   const [onboardingConcluida, setOnboardingConcluida] = useState(save?.onboardingConcluida ?? false);
   const dev = useDevMode();
+  const insetsDoTopo = useSafeAreaInsets().top;
 
   /*
    * Estas têm identidade fixa de propósito. O efeito da navegação depende de
@@ -181,14 +191,19 @@ function Jogo({ save }: { save: SaveData | null }) {
 
   /**
    * A ponte aprender → mundo. É o único lugar que vê as duas features, e ele não
-   * interpreta nada: o que cada influência vira é assunto do engine do mundo, e
-   * o que conta como conhecimento novo é assunto do engine de learning.
+   * interpreta nada: o que conta como conhecimento novo é assunto do learning, e
+   * o que a jornada acumulada constrói é assunto do mundo (engine/marcos.ts).
+   *
+   * A civilização cresce pela PROGRESSÃO da vila — 1ª curiosidade: cabana; 3ª:
+   * fogueira —, e não mais um prédio do tema a cada curiosidade. As influências
+   * continuam no perfil (`porInfluencia`): são a afinidade que os marcos
+   * temáticos vão ler.
    *
    * O mundo cresce agora, com o aparelho ainda aberto. "Ver no mundo" só revela.
    */
   const aoAprender = (resultado: LearningResult) => {
     if (resultado.status !== 'aprendida') return;
-    world.aplicarEventos(gerarEventosDeCrescimento(resultado.influencias), resultado.curiosidadeId);
+    world.avancarProgressao({ aprendidas: resultado.perfil.aprendidas });
   };
 
   /**
@@ -275,6 +290,39 @@ function Jogo({ save }: { save: SaveData | null }) {
     // Fila cronológica: a mais antiga na frente é a próxima a ser contada.
     setNoticias((atuais) => [...atuais, ...novas].slice(-LIMITE_DE_NOTICIAS));
   }, [world.construcoes, aprendizado.perfil.aprendidas.length, onboardingConcluida, aprenderAberto]);
+
+  /**
+   * Evoluções também são notícia: "A primeira cabana cresceu e virou uma casa."
+   * Uma construção que evolui não muda a quantidade de construções, então o
+   * efeito acima não a vê — este acompanha os ids das evoluções. As que vieram
+   * do save já aconteceram há tempo: nascem "noticiadas".
+   */
+  const evolucoesNoticiadas = useRef<Set<string>>(
+    new Set(world.construcoes.flatMap((e) => (e.evolucoes ?? []).map((ev) => ev.marco))),
+  );
+  useEffect(() => {
+    const presentes = new Set<string>();
+    const novas: NoticiaDoMundo[] = [];
+    const agora = Date.now();
+    for (const elemento of world.construcoes) {
+      for (const evolucao of elemento.evolucoes ?? []) {
+        presentes.add(evolucao.marco);
+        if (evolucoesNoticiadas.current.has(evolucao.marco)) continue;
+        evolucoesNoticiadas.current.add(evolucao.marco);
+        novas.push({
+          id: proximoIdDeNoticia.current++,
+          // a frase DESTA evolução (a mesma construção pode ter subido duas vezes)
+          texto: definicaoDoMarco(evolucao.marco)?.frase ?? fraseDeCrescimento(elemento),
+          assunto: assuntoDeCrescimento(elemento),
+          criadoEm: agora,
+          vista: false,
+        });
+      }
+    }
+    // jornada recomeçada: as evoluções antigas sumiram junto com o mundo
+    if (presentes.size < evolucoesNoticiadas.current.size) evolucoesNoticiadas.current = presentes;
+    if (novas.length > 0) setNoticias((atuais) => [...atuais, ...novas].slice(-LIMITE_DE_NOTICIAS));
+  }, [world.construcoes]);
 
   /**
    * A ponte mundo → conquistas.
@@ -457,6 +505,31 @@ function Jogo({ save }: { save: SaveData | null }) {
     [aprendizado.curiosidades],
   );
 
+  /**
+   * O que o balão conta sobre a origem de uma construção. Na progressão: o
+   * capítulo MAIS RECENTE da vida dela — a criação, ou a última evolução ("Este
+   * foi o primeiro abrigo do seu mundo. Com novos conhecimentos, ele cresceu.")
+   * — e quem o formou (o gatilho e, com mais de uma, quantas descobertas
+   * contribuíram). A história inteira fica em `historiaDoElemento`, pronta para
+   * uma tela de histórico. Nas outras: a curiosidade que a fez nascer.
+   */
+  const origemParaOBalao = (elemento: GrowthElement): { texto: string; destaque?: string } => {
+    const historia = historiaDoElemento(elemento);
+    if (historia) {
+      const { atual } = historia;
+      const gatilho = porId.get(atual.gatilho)?.titulo;
+      const n = atual.contribuintes.length;
+      return {
+        texto: atual.definicao?.historia ?? 'Construção da sua jornada',
+        destaque: gatilho && (n > 1 ? `${n} descobertas, a última: ${gatilho}` : gatilho),
+      };
+    }
+    const curiosidade = porId.get(elemento.origemConhecimentoId ?? '');
+    return curiosidade
+      ? { texto: 'Surgiu quando você aprendeu:', destaque: curiosidade.titulo }
+      : { texto: 'Construção da sua jornada' };
+  };
+
   /** Fecha a etiqueta sempre que o mapa deixa de ser o assunto. */
   useEffect(() => {
     if (aprenderAberto || configAberto || conquistasAbertas || world.gerando) setSelecao(null);
@@ -473,6 +546,68 @@ function Jogo({ save }: { save: SaveData | null }) {
     setOnboardingConcluida(false); // jornada nova, boas-vindas de volta
     world.novoMundo();
   }, [aprendizado, world]);
+
+  /*
+   * SIMULAÇÃO DA JORNADA (modo dev). Nenhum atalho: cada passo faz o que o
+   * botão APRENDI faz no Discovery — `aprendizado.aprender` e, se foi
+   * 'aprendida', o mesmo `aoAprender` — e daí em diante é a progressão de
+   * sempre: criação, evolução, caminhos, câmera, banner, notícias, World Pulse.
+   * A curiosidade é a primeira ainda não aprendida na ordem do catálogo (a do
+   * feed): determinística, sem sorteio.
+   */
+  const etapas = useMemo(() => etapasDaJornada(), []);
+  const limiteDaJornada = etapas[etapas.length - 1]?.quantidade ?? 0;
+  const aprendidasAgora = aprendizado.perfil.aprendidas.length;
+  const aprenderProxima = () => {
+    const curiosidade = paraDescobrir(aprendizado.curiosidades, aprendizado.perfil)[0];
+    if (!curiosidade) return false;
+    const resultado = aprendizado.aprender(curiosidade);
+    if (resultado.status === 'aprendida') aoAprender(resultado);
+    return true;
+  };
+  const passos = useSimuladorDaJornada({
+    aprendidas: aprendidasAgora,
+    limite: limiteDaJornada,
+    aprenderProxima,
+    // espera o mundo: recriação, ou as boas-vindas esperando o "Continuar"
+    pronto: !world.gerando && !mostrarIntro,
+  });
+  const vilaAtual = assentamentoAlvo(world.estadoPersistivel.settlements);
+  const aconteceu = quemJaAconteceu(world.construcoes, world.estadoPersistivel.settlements);
+  const proximaEtapa = etapas.find((e) => e.quantidade > aprendidasAgora) ?? null;
+  const rotuloDaEtapa = (degraus: { nome: string }[]) => degraus.map((d) => d.nome).join(' + ');
+  /** Para assistir: fecha as Configurações e o Discovery antes de andar. */
+  const assistir = (acao: () => void) => () => {
+    fecharConfiguracoes();
+    fecharAprender();
+    acao();
+  };
+  const simulador: Simulador = {
+    aprendidas: aprendidasAgora,
+    limite: limiteDaJornada,
+    restantes: paraDescobrir(aprendizado.curiosidades, aprendizado.perfil).length,
+    estagio: { acampamento: 'Acampamento', assentamento: 'Assentamento', vila: 'Vila' }[
+      vilaAtual ? estagioDaVila(vilaAtual) : 'acampamento'
+    ],
+    nivelDosCaminhos: vilaAtual?.nivelDosCaminhos ?? 0,
+    proximo: proximaEtapa && { quantidade: proximaEtapa.quantidade, rotulo: rotuloDaEtapa(proximaEtapa.degraus) },
+    etapas: etapas.map((e) => ({
+      quantidade: e.quantidade,
+      rotulo: rotuloDaEtapa(e.degraus),
+      estado: e.degraus.every(aconteceu) ? 'feito' : e.quantidade <= aprendidasAgora ? 'pendente' : 'futuro',
+    })),
+    rodando: passos.rodando,
+    tocando: passos.tocando,
+    onProxima: assistir(passos.proximaDescoberta),
+    onAteMarco: assistir(() => passos.ate(proximaEtapa?.quantidade ?? aprendidasAgora + 1)),
+    onJornada: assistir(passos.jornadaInteira),
+    onPausar: passos.pausar,
+    // o MESMO recomeçar da jornada (fases seguras de recriação), nada paralelo
+    onReiniciar: () => {
+      passos.pausar();
+      recomecarJornada();
+    },
+  };
 
   /*
    * A regra da barra: tocar num destino DIFERENTE navega; tocar no destino já
@@ -593,12 +728,7 @@ function Jogo({ save }: { save: SaveData | null }) {
             x={selecao.tela.x}
             y={selecao.tela.y}
             titulo={NOME_DA_CONSTRUCAO[selecao.elemento.tipo] ?? 'Construção'}
-            texto={
-              porId.has(selecao.elemento.origemConhecimentoId ?? '')
-                ? 'Surgiu quando você aprendeu:'
-                : 'Construção da sua jornada'
-            }
-            destaque={porId.get(selecao.elemento.origemConhecimentoId ?? '')?.titulo}
+            {...origemParaOBalao(selecao.elemento)}
           />
         )}
         {/* O que acabou de nascer, quando o jogador volta ao mundo. */}
@@ -631,19 +761,24 @@ function Jogo({ save }: { save: SaveData | null }) {
         onToqueSecreto={dev.registrarToque}
         ferramentasDev={
           <>
+            {/* A ferramenta principal: a jornada real, passo a passo. */}
+            <SimuladorDaJornada simulador={simulador} />
+            {/* O terreno: semente, nível do mar e a legenda das cores. */}
             <WorldDevTools
               seed={world.seed}
               nivelMar={world.nivelMar}
               faixaNivelMar={world.faixaNivelMar}
               onGerarComSemente={world.gerarComSemente}
               onMudarNivelMar={world.mudarNivelMar}
-              crescimentos={world.crescimentos}
-              onCrescer={world.aplicarCrescimentoDev}
             />
             <BiomeLegend itens={world.legenda} />
           </>
         }
       />
+      {/* Modo dev, com o mundo à vista: o simulador na mão, para assistir e pausar. */}
+      {dev.ativo && !aprenderAberto && !configAberto && !conquistasAbertas && (
+        <SimulacaoFlutuante simulador={simulador} topo={insetsDoTopo + 8} />
+      )}
       {/* A barra vale para o app inteiro: fica acima do mundo e do aparelho. */}
       <ActionBar
         itens={acoes}

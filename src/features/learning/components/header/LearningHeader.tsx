@@ -20,7 +20,8 @@ type Props = {
 };
 
 /**
- * O header do Discovery: uma região própria, fixa, acima da timeline.
+ * O header do Discovery: uma região própria, no alto da primeira página do
+ * feed — acima do primeiro post, e rolando com ele (não é fixo).
  *
  * Duas seções de UMA peça só — a navegação (Éon ⟷ engrenagem) e o estado do
  * mundo (World Pulse) —, na superfície do tema, sem card dentro de header. Um

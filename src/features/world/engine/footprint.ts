@@ -9,10 +9,11 @@
 // Medidas em TILES, não em unidades: o PNG tem tamanho fixo em pixels de arte e
 // não cresce quando o mundo cresce. Conta igual à do render (WorldSprites).
 // =====================================================================
+import { emTiles } from './escala';
 import type { SpriteKey } from './types';
 
 export interface BuildingFootprint {
-  /** Largura do sprite, em tiles (o maior PNG do papel ÷ ART). */
+  /** Largura do sprite, em tiles (o maior PNG do papel, em px, convertido pela escala). */
   largura: number;
   /** Altura do sprite, da base ao topo, em tiles. */
   altura: number;
@@ -21,15 +22,35 @@ export interface BuildingFootprint {
 }
 
 /**
- * Construções com retângulo. Valores a partir do MAIOR PNG de cada papel, já com
- * a sombra (pixels ÷ 3): casa pequena 21×16 px, casa maior 31×22 px, fonte 22×12 px.
+ * O tamanho da ARTE de cada construção, em pixels — o MAIOR PNG de cada papel,
+ * já com a sombra. É daqui que sai o espaço no chão: em tiles, pela escala do
+ * mundo (`emTiles`), então mudar PIXELS_POR_TILE mantém as colisões certas.
  * Se uma arte mudar de tamanho, atualize aqui.
  */
-export const FOOTPRINT: Partial<Record<SpriteKey, BuildingFootprint>> = {
-  casa: { largura: 7, altura: 5.3, folga: 0.5 },
-  casa_maior: { largura: 10.3, altura: 7.3, folga: 1 },
-  fonte: { largura: 7.3, altura: 4, folga: 0 }, // o respiro da fonte é a praça (settlements.ts)
+const ARTE_PX: Partial<Record<SpriteKey, { largura: number; altura: number }>> = {
+  casa: { largura: 21, altura: 16 },
+  casa_maior: { largura: 31, altura: 22 },
+  fonte: { largura: 22, altura: 12 },
+  cabana: { largura: 22, altura: 15 },
+  fogueira: { largura: 14, altura: 16 },
 };
+
+/** Folga em volta de cada construção, em tiles. */
+const FOLGA: Partial<Record<SpriteKey, number>> = {
+  casa: 0.5,
+  casa_maior: 1,
+  fonte: 0, // o respiro da fonte é a praça (settlements.ts)
+  cabana: 0.5,
+  fogueira: 0.5,
+};
+
+/** Construções com retângulo, em tiles. */
+export const FOOTPRINT: Partial<Record<SpriteKey, BuildingFootprint>> = Object.fromEntries(
+  Object.entries(ARTE_PX).map(([tipo, px]) => [
+    tipo,
+    { largura: emTiles(px!.largura), altura: emTiles(px!.altura), folga: FOLGA[tipo as SpriteKey] ?? 0 },
+  ]),
+);
 
 /** Folga extra (tiles) para pares que pedem mais respiro que a soma das folgas. */
 const FOLGA_ENTRE: Partial<Record<`${SpriteKey}|${SpriteKey}`, number>> = {

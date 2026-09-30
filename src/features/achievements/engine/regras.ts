@@ -33,7 +33,9 @@ interface Regra {
  */
 const REGRAS: readonly Regra[] = [
   // `casa` inclui a casa maior: o mundo traduz as duas para o mesmo assunto.
-  { id: 'first-house', alcancada: (nascidos) => nascidos.includes('casa') },
+  // "Primeira casa!" é o primeiro abrigo: a cabana (o marco da 1ª curiosidade)
+  // ou uma casa, o que nascer primeiro.
+  { id: 'first-house', alcancada: (nascidos) => nascidos.includes('cabana') || nascidos.includes('casa') },
 ];
 
 export const ORDEM_DAS_CONQUISTAS: readonly AchievementId[] = REGRAS.map((regra) => regra.id);

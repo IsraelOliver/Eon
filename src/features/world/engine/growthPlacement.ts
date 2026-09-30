@@ -62,6 +62,8 @@ const DISTANCIA_MINIMA_SPRITE: Partial<Record<SpriteKey, number>> = {
   casa: 2.2, // casa diagonal pequena: vila compacta sem sobrepor
   casa_maior: 2.6,
   fonte: 2,
+  cabana: 2.2,
+  fogueira: 1.6,
   mina: 4,
   observatorio: 5,
 };
@@ -189,6 +191,12 @@ function retanguloSobreARede(r: { esquerda: number; direita: number; topo: numbe
   }
   return false;
 }
+
+/**
+ * O que pode ocupar o CORAÇÃO da vila — a praça reservada. A fonte, e a fogueira,
+ * que é o primeiro sinal de núcleo antes de a fonte existir. Todo o resto desvia.
+ */
+const NO_CORACAO: ReadonlySet<SpriteKey> = new Set(['fonte', 'fogueira']);
 
 /** Terreno para construir em vila: planície e savana primeiro. */
 const BASE_CASA: Partial<Record<TileType, number>> = { planicie: 2, savana: 1.5, floresta: 0.5, deserto: 0.3, tundra: 0.3 };
@@ -360,7 +368,7 @@ function procurarLugar(
     const meuRetangulo = retanguloDe(sprite, x, y);
     // nem a rua: nesta versão a casa desvia do caminho, não o contrário
     if (naRede && meuRetangulo && retanguloSobreARede(meuRetangulo, naRede)) continue;
-    if (praca && meuRetangulo && sprite !== 'fonte' && retanguloTocaCirculo(meuRetangulo, praca)) continue;
+    if (praca && meuRetangulo && !NO_CORACAO.has(sprite) && retanguloTocaCirculo(meuRetangulo, praca)) continue;
     // a própria fonte precisa da praça inteira livre em volta dela
     const minhaPraca = sprite === 'fonte' ? { ...centroVisual('fonte', x, y), raio: RAIO_PRACA } : null;
 
@@ -454,6 +462,96 @@ export function colocarCrescimento(
     status: 'colocado',
     colocacao: { evento: evento.tipo, tipo: lugar.sprite, x: lugar.x, y: lugar.y, intensidade: evento.intensidade },
   };
+}
+
+/**
+ * Onde nasce uma construção NOVA da progressão (engine/marcos.ts). Quem decide
+ * QUANDO é a regra dos degraus; aqui só se escolhe ONDE, sempre para o sprite
+ * real — o espaço no chão é o dele. A vila já precisa existir — quem a funda,
+ * quando é o caso, é growthElements (com as mesmas regras da primeira vila).
+ *
+ * - `fundaVila` / `anelDasCasas`: no anel das casas pequenas.
+ * - `anelDasMaiores`: no anel das casas maiores, logo fora da praça.
+ * - `centroDaVila`: o mais perto possível do centro, dentro da praça reservada.
+ */
+export function colocarMarco(
+  mundo: World,
+  ocupantes: readonly WorldOccupant[],
+  sprite: SpriteKey,
+  lugar: 'fundaVila' | 'centroDaVila' | 'anelDasCasas' | 'anelDasMaiores',
+  assentamento: Settlement,
+  rng: Rng,
+): { x: number; y: number } | null {
+  const noCentro = lugar === 'centroDaVila';
+  const construcao = lugar === 'anelDasMaiores' ? 'casa_maior' : 'casa';
+  const anel = noCentro ? { ideal: 0, tolerancia: 1 } : anelIdeal(assentamento, construcao);
+  const bases = construcao === 'casa_maior' ? BASE_CASA_MAIOR : BASE_CASA;
+  const achado = procurarLugar(
+    mundo,
+    ocupantes,
+    {
+      evento: construcao === 'casa_maior' ? 'melhorarInfraestrutura' : 'desenvolverPovoamento',
+      regra: {
+        pontuar: noCentro
+          ? (c) => (tipoConstruivel(c.tipo) && c.vila ? -c.vila.distanciaCentro * 2 : null)
+          : (c) => notaNaVila(c, bases, construcao),
+        sprite: () => sprite,
+      },
+      vila: {
+        assentamento,
+        anel,
+        raioDisco: noCentro ? MARGEM_PRACA_ANTES_DA_FONTE + 2 : raioDeAmostragem(assentamento, anel),
+      },
+      pesoCentro: 0,
+    },
+    rng,
+  );
+  return achado && { x: achado.x, y: achado.y };
+}
+
+/** Os dois retângulos se cruzam de verdade (sem folga)? */
+function retangulosSeCruzam(
+  a: { esquerda: number; direita: number; topo: number; base: number },
+  b: { esquerda: number; direita: number; topo: number; base: number },
+): boolean {
+  return a.esquerda < b.direita && b.esquerda < a.direita && a.topo < b.base && b.topo < a.base;
+}
+
+/**
+ * Uma construção pode crescer para `tipo` NO MESMO LUGAR? (A evolução nunca
+ * muda de posição.) O espaço novo é o do sprite novo, e tem de:
+ * - pisar em terreno firme, longe o bastante da água (`footprintEmTerrenoValido`);
+ * - não cruzar nenhuma outra construção — aqui sem folga: crescer um pouco
+ *   para perto da vizinha é aceitável, subir por cima dela não;
+ * - ficar fora da praça (salvo quem mora no coração da vila).
+ *
+ * A rua não entra: na progressão a rede é refeita logo depois (em volta da
+ * construção nova), então crescer por cima de uma trilha só a faz desviar.
+ *
+ * `outros` são os ocupantes SEM a própria construção.
+ */
+export function cabeEvoluir(
+  mundo: World,
+  outros: readonly WorldOccupant[],
+  tipo: SpriteKey,
+  x: number,
+  y: number,
+  assentamento?: Settlement,
+): boolean {
+  if (!footprintEmTerrenoValido(mundo, tipo, x, y)) return false;
+  const meu = retanguloDe(tipo, x, y);
+  for (const o of outros) {
+    const dele = retanguloDe(o.tipo, o.x, o.y);
+    if (meu && dele) {
+      if (retangulosSeCruzam(meu, dele)) return false;
+    } else if (unidades(Math.hypot(o.x - x, o.y - y)) < distanciaEntre(tipo, o.evento, o.tipo, o.evento)) {
+      return false;
+    }
+  }
+  if (assentamento && meu && !NO_CORACAO.has(tipo) && retanguloTocaCirculo(meu, areaDaPraca(assentamento))) {
+    return false;
+  }
+  return true;
 }
 
 /** Fonte: o mais perto possível do centro lógico, dentro da praça reservada para ela. */

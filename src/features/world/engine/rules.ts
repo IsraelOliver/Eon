@@ -1,11 +1,12 @@
 // =====================================================================
 // REGRAS DO MUNDO — mexa aqui para mudar a geração
 // =====================================================================
+import { TILES_ALTURA, TILES_DO_PROTOTIPO, TILES_LARGURA } from './escala';
 import type { Biome, TileType } from './types';
 
-/** Tamanho do mundo em tiles. */
-export const W = 480;
-export const H = 320;
+/** Tamanho do mundo em tiles. Vem da escala (escala.ts) — mexa lá, não aqui. */
+export const W = TILES_LARGURA;
+export const H = TILES_ALTURA;
 
 /**
  * Escala em relação ao mundo do protótipo (150x100).
@@ -14,7 +15,7 @@ export const H = 320;
  * MAIORES em tiles, e não mais ilhas do mesmo tamanho. É o que dá "respiro" ao
  * terreno e faz os sprites parecerem proporcionais.
  */
-export const ESCALA_MUNDO = W / 150;
+export const ESCALA_MUNDO = W / TILES_DO_PROTOTIPO;
 
 const tiles = (unidades: number) => Math.round(unidades * ESCALA_MUNDO);
 

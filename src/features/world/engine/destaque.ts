@@ -3,13 +3,16 @@
 // e a frase que a anuncia. Pura: não sabe de câmera nem de tela.
 // =====================================================================
 import type { AssuntoDoMundo } from '../../../shared/domain/assunto';
+import { definicaoDoMarco } from './marcos';
 import type { GrowthElement, SpriteKey } from './types';
 
 /**
  * Ordem de importância. Um aprendizado pode criar mais de uma coisa; a câmera
  * vai para a primeira desta lista que tiver nascido.
  */
-const PRIORIDADE: readonly SpriteKey[] = ['observatorio', 'mina', 'fonte', 'casa_maior', 'casa'];
+const PRIORIDADE: readonly SpriteKey[] = [
+  'fogueira', 'cabana', 'observatorio', 'mina', 'fonte', 'casa_maior', 'casa',
+];
 
 /** Quem não está na lista entra no fim, mas continua valendo como novidade. */
 function posicao(tipo: SpriteKey): number {
@@ -36,16 +39,23 @@ const TITULO = 'Seu mundo cresceu';
  * O que dizer sobre uma coisa que acabou de nascer.
  *
  * É a MESMA frase do destaque, exposta sozinha para as notícias do feed não
- * precisarem de um segundo catálogo de textos. Uma fonte, duas telas.
+ * precisarem de um segundo catálogo de textos. Uma fonte, duas telas. O que
+ * veio da progressão fala pela frase do degrau — o da última evolução, se houve.
  */
 export function fraseDeCrescimento(elemento: GrowthElement): string {
-  return FRASE[elemento.tipo] ?? FRASE_PADRAO;
+  // o ÚLTIMO acontecimento da construção: a evolução mais recente, ou a criação
+  const ultima = elemento.evolucoes?.[elemento.evolucoes.length - 1];
+  const degrau = ultima ? ultima.marco : elemento.marco?.id;
+  const definicao = degrau ? definicaoDoMarco(degrau) : null;
+  return definicao?.frase ?? FRASE[elemento.tipo] ?? FRASE_PADRAO;
 }
 
 const ASSUNTO: Record<SpriteKey, AssuntoDoMundo> = {
   casa: 'casa',
   casa_maior: 'casa',
   fonte: 'fonte',
+  cabana: 'cabana',
+  fogueira: 'fogueira',
   observatorio: 'observatorio',
   mina: 'mina',
   arvore: 'natureza',

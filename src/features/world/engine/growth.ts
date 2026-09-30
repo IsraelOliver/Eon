@@ -1,7 +1,12 @@
 // =====================================================================
-// CRESCIMENTO — interpreta influências do conhecimento como intenções
+// CRESCIMENTO COMUM — interpreta influências do conhecimento como intenções
 // abstratas do mundo. Não escolhe lugar, sprite nem altera elementos.
 // Função pura e determinística: mesma entrada, mesma saída, sem mutação.
+//
+// Desde a progressão da vila (engine/marcos.ts), o APRENDIZADO não passa mais
+// por aqui: a civilização cresce por marcos acumulados, e não um prédio por
+// curiosidade. Isto continua sendo o crescimento por evento — usado pelo modo
+// dev e base dos futuros marcos temáticos e evoluções.
 // =====================================================================
 import type { InfluenceKey, KnowledgeInfluence } from '../../../shared/domain/influence';
 import type { WorldGrowthEvent, WorldGrowthKind } from './types';
@@ -22,14 +27,6 @@ export const NOMES_DE_CRESCIMENTO: Record<WorldGrowthKind, string> = {
   ampliarExploracao: 'Exploração',
   desenvolverObservacao: 'Observação',
 };
-
-export const CHAVES_DE_CRESCIMENTO = Object.keys(NOMES_DE_CRESCIMENTO) as WorldGrowthKind[];
-
-/**
- * Crescimentos que o conhecimento pode disparar hoje. Natureza pertence à seed,
- * então `crescerVegetacao` fica fora (continua no domínio, mas não é oferecido).
- */
-export const CHAVES_DE_CIVILIZACAO = CHAVES_DE_CRESCIMENTO.filter((k) => k !== 'crescerVegetacao');
 
 /** Record completo: uma InfluenceKey nova não compila até ganhar um destino aqui. */
 const EVENTO_POR_INFLUENCIA: Record<InfluenceKey, WorldGrowthKind> = {

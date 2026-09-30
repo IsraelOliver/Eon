@@ -33,7 +33,7 @@ const PASSO = ITEM_LARGURA + GAP;
 /**
  * Tamanho de um ícone em pixel art (arte de 14×14). Nas telas 3x dá 56 px
  * exatos: cada pixel da arte vira um bloco 4×4, sem ampliação em tempo de
- * execução. Visualmente pesa o mesmo que o globo de texto ao lado.
+ * execução. Os dois ícones da barra (Mundo e Discovery) têm esse tamanho.
  */
 const TAMANHO_DO_SPRITE = 56 / 3;
 /** Feedback de toque: só o ícone esmaece um pouco. Nada de fundo nem halo. */

@@ -6,13 +6,19 @@
 /** Piso de segurança: nenhum aparelho real chega perto. */
 const ALTURA_MINIMA = 320;
 
+/** A folga entre a borda de cima de um post e o chip do tema. */
+export const FOLGA_DO_TOPO = 14;
+
 export interface MedidasDoFeed {
   /**
-   * Altura de um post: a **área da timeline** inteira — da linha que fecha o
-   * header até o pé da tela. A foto sangra até as bordas dessa área.
+   * Altura de uma página do feed: a **lista inteira** (a tela). A primeira
+   * página é o header + o primeiro post; as outras, um post de borda a borda.
    */
-  alturaDoPost: number;
-  /** De onde o conteúdo pode começar: logo abaixo do header, com folga. */
+  alturaDaPagina: number;
+  /**
+   * De onde o conteúdo de um post de tela cheia pode começar: abaixo da status
+   * bar, com folga. (O primeiro post começa logo abaixo do header: só a folga.)
+   */
   recuoTopo: number;
   /**
    * Onde o conteúdo tem de parar. A ActionBar flutua por cima do post: a
@@ -21,19 +27,15 @@ export interface MedidasDoFeed {
   recuoBase: number;
 }
 
-/**
- * `alturaDaTimeline` é a altura medida da lista. O header é fixo e fica fora
- * dela, então a safe area de cima já foi consumida por ele: aqui só a de baixo
- * conta.
- */
+/** `alturaDaLista` é a altura medida da lista — a tela, já que o header rola dentro dela. */
 export function medidasDoFeed(
-  alturaDaTimeline: number,
-  insets: { bottom: number },
+  alturaDaLista: number,
+  insets: { top: number; bottom: number },
   espacoDaBarra: number,
 ): MedidasDoFeed {
   return {
-    alturaDoPost: Math.max(ALTURA_MINIMA, alturaDaTimeline),
-    recuoTopo: 14,
+    alturaDaPagina: Math.max(ALTURA_MINIMA, alturaDaLista),
+    recuoTopo: insets.top + FOLGA_DO_TOPO,
     recuoBase: insets.bottom + espacoDaBarra + 14,
   };
 }
@@ -41,15 +43,15 @@ export function medidasDoFeed(
 /**
  * Onde começa o post `indice`, em pixels de rolagem.
  *
- * O header (Éon + World Pulse) fica FORA da lista, fixo acima dela. Então todo
- * post começa num múltiplo exato da altura da timeline — nenhuma medida de
- * header entra na conta.
+ * Toda página mede a lista inteira — a primeira também, porque o header e o
+ * primeiro post DIVIDEM a primeira página. Então toda página começa num
+ * múltiplo exato da altura da lista — nenhuma medida de header entra na conta.
  */
 export function posicaoDoPost(alturaDoPost: number, indice: number): number {
   return indice * alturaDoPost;
 }
 
-/** As paradas do snap: uma por post, cada uma ocupando a timeline inteira. */
+/** As paradas do snap: uma por página, cada uma ocupando a lista inteira. */
 export function paradasDoFeed(alturaDoPost: number, quantidade: number): number[] {
   return Array.from({ length: quantidade }, (_, i) => posicaoDoPost(alturaDoPost, i));
 }

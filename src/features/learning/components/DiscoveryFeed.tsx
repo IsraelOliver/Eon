@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  FlatList, StyleSheet, Text, useWindowDimensions, View,
+  type NativeScrollEvent, type NativeSyntheticEvent,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/shared/theme/colors';
@@ -7,35 +10,49 @@ import { ESPACO_ACTION_BAR } from '@/shared/ui/ActionBar';
 
 import type { CuriosityEntry } from '../data/curiosities';
 import type { CuriosityId } from '../engine/types';
-import { medidasDoFeed, paradasDoFeed, posicaoDoPost } from '../presentation/feedLayout';
+import {
+  FOLGA_DO_TOPO, medidasDoFeed, paradasDoFeed, posicaoDoPost,
+} from '../presentation/feedLayout';
 import { DiscoveryPost } from './DiscoveryPost';
 
 /**
- * Quanto o header ocupa abaixo da safe area, só para estimar a timeline antes
- * da primeira medida. Vale por um quadro: o `onLayout` da lista corrige logo depois.
+ * Quanto o header ocupa abaixo da safe area, só para a status bar saber quando
+ * ele saiu antes da primeira medida. O tamanho do primeiro post não depende
+ * disto: ele ocupa, com `flex`, o que o header deixa da página.
  */
 const HEADER_ESTIMADO = 110;
 
 type Props = {
   /** Só as ainda não descobertas — quem filtra é a tela. */
   curiosidades: readonly CuriosityEntry[];
+  /** Éon + World Pulse. Mora na primeira página, acima do primeiro post, e rola com ela. */
+  cabecalho: ReactElement;
+  /**
+   * Avisa quando o header sai de baixo da status bar (e quando volta): dali
+   * em diante o alto da tela é fotografia, e a barra de status precisa de
+   * ícones claros.
+   */
+  onHeaderFora?: (fora: boolean) => void;
   onLer: (id: CuriosityId) => void;
   /** Muda de valor para pedir a volta ao topo, rolando suave. `0` = nenhum pedido ainda. */
   voltarAoTopo?: number;
 };
 
 /**
- * O Discovery Feed: a timeline, uma descoberta por vez, ocupando toda a área
- * abaixo do header.
+ * O Discovery Feed: uma descoberta por página, a página do tamanho da tela.
  *
- * O header é uma região própria, fixa, FORA da lista: o header termina, a
- * timeline começa. Cada post mede exatamente a altura da lista (medida com
- * `onLayout`), então todo post começa num múltiplo exato dela (`paradasDoFeed`).
+ * O header NÃO é fixo: ele é o alto da primeira página, acima do primeiro post
+ * (header termina, post começa — duas regiões, sem degradê entre elas), e sobe
+ * junto quando a pessoa passa para a próxima curiosidade. As outras páginas
+ * são um post de borda a borda. Toda página mede a altura da lista (medida com
+ * `onLayout`), então toda página começa num múltiplo exato dela (`paradasDoFeed`).
  *
  * **Nenhum padding no conteúdo da lista.** Com posts de uma viewport cada, o fim
  * da rolagem coincide exatamente com a última parada. Um padding quebraria isso.
  */
-export function DiscoveryFeed({ curiosidades, onLer, voltarAoTopo = 0 }: Props) {
+export function DiscoveryFeed({
+  curiosidades, cabecalho, onHeaderFora, onLer, voltarAoTopo = 0,
+}: Props) {
   const lista = useRef<FlatList<CuriosityEntry>>(null);
 
   // Só rola a lista que já existe: nada remonta, nenhum estado do feed muda.
@@ -50,40 +67,75 @@ export function DiscoveryFeed({ curiosidades, onLer, voltarAoTopo = 0 }: Props) 
   const janela = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [alturaMedida, setAlturaMedida] = useState<number | null>(null);
-  const alturaDaTimeline = alturaMedida ?? janela.height - insets.top - HEADER_ESTIMADO;
+  const [cabecalhoMedido, setCabecalhoMedido] = useState<number | null>(null);
+  const alturaDoCabecalho = cabecalhoMedido ?? insets.top + HEADER_ESTIMADO;
 
-  const { alturaDoPost, recuoTopo, recuoBase } = medidasDoFeed(
-    alturaDaTimeline,
+  const { alturaDaPagina, recuoTopo, recuoBase } = medidasDoFeed(
+    alturaMedida ?? janela.height,
     insets,
     ESPACO_ACTION_BAR,
   );
 
   const paradas = useMemo(
-    () => paradasDoFeed(alturaDoPost, curiosidades.length),
-    [alturaDoPost, curiosidades.length],
+    () => paradasDoFeed(alturaDaPagina, curiosidades.length),
+    [alturaDaPagina, curiosidades.length],
   );
 
   const medirItem = useCallback(
     (_: unknown, index: number) => ({
-      length: alturaDoPost,
-      offset: posicaoDoPost(alturaDoPost, index),
+      length: alturaDaPagina,
+      offset: posicaoDoPost(alturaDaPagina, index),
       index,
     }),
-    [alturaDoPost],
+    [alturaDaPagina],
   );
 
   const desenharItem = useCallback(
-    ({ item, index }: { item: CuriosityEntry; index: number }) => (
-      <DiscoveryPost
-        curiosidade={item}
-        altura={alturaDoPost}
-        recuoTopo={recuoTopo}
-        recuoBase={recuoBase}
-        primeiro={index === 0}
-        onLer={() => onLer(item.id)}
-      />
-    ),
-    [alturaDoPost, recuoTopo, recuoBase, onLer],
+    ({ item, index }: { item: CuriosityEntry; index: number }) => {
+      if (index !== 0) {
+        return (
+          <DiscoveryPost
+            curiosidade={item}
+            altura={alturaDaPagina}
+            recuoTopo={recuoTopo}
+            recuoBase={recuoBase}
+            primeiro={false}
+            onLer={() => onLer(item.id)}
+          />
+        );
+      }
+
+      // A primeira página: o header em cima, o primeiro post no resto dela.
+      return (
+        <View style={{ height: alturaDaPagina }}>
+          <View onLayout={(e) => setCabecalhoMedido(e.nativeEvent.layout.height)}>{cabecalho}</View>
+          <DiscoveryPost
+            curiosidade={item}
+            recuoTopo={FOLGA_DO_TOPO}
+            recuoBase={recuoBase}
+            primeiro
+            onLer={() => onLer(item.id)}
+          />
+        </View>
+      );
+    },
+    [alturaDaPagina, cabecalho, recuoTopo, recuoBase, onLer],
+  );
+
+  /*
+   * O header sai de baixo da status bar quando a rolagem passa da altura dele
+   * menos a safe area. Só avisa quando o estado MUDA: a rolagem dispara muitos
+   * eventos, a tela não precisa renderizar a cada um.
+   */
+  const headerFora = useRef(false);
+  const aoRolar = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const fora = e.nativeEvent.contentOffset.y > alturaDoCabecalho - insets.top;
+      if (fora === headerFora.current) return;
+      headerFora.current = fora;
+      onHeaderFora?.(fora);
+    },
+    [alturaDoCabecalho, insets.top, onHeaderFora],
   );
 
   return (
@@ -94,8 +146,11 @@ export function DiscoveryFeed({ curiosidades, onLer, voltarAoTopo = 0 }: Props) 
       data={curiosidades}
       keyExtractor={(curiosidade) => curiosidade.id}
       renderItem={desenharItem}
+      onScroll={aoRolar}
+      scrollEventThrottle={16}
       ListEmptyComponent={
-        <View style={{ height: alturaDoPost }}>
+        <View style={{ height: alturaDaPagina }}>
+          {cabecalho}
           <TudoDescoberto recuoBase={recuoBase} />
         </View>
       }

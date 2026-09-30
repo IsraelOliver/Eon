@@ -5,6 +5,10 @@
  */
 export type AssuntoDoMundo =
   | 'casa'
+  /** O primeiro abrigo do mundo (marco da vila). */
+  | 'cabana'
+  /** O primeiro núcleo da vila (marco da vila). */
+  | 'fogueira'
   | 'fonte'
   | 'caminho'
   | 'observatorio'
