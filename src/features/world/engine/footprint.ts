@@ -33,6 +33,8 @@ const ARTE_PX: Partial<Record<SpriteKey, { largura: number; altura: number }>> =
   fonte: { largura: 22, altura: 12 },
   cabana: { largura: 22, altura: 15 },
   fogueira: { largura: 14, altura: 16 },
+  telescopio: { largura: 15, altura: 18 },
+  posto_de_observacao: { largura: 24, altura: 17 },
 };
 
 /** Folga em volta de cada construção, em tiles. */
@@ -42,6 +44,8 @@ const FOLGA: Partial<Record<SpriteKey, number>> = {
   fonte: 0, // o respiro da fonte é a praça (settlements.ts)
   cabana: 0.5,
   fogueira: 0.5,
+  telescopio: 0.5,
+  posto_de_observacao: 0.5,
 };
 
 /** Construções com retângulo, em tiles. */

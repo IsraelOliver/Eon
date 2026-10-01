@@ -197,7 +197,7 @@ export function migrarV2(antigo: SaveV2): SaveV3 {
   return {
     ...antigo,
     version: 3,
-    achievements: { desbloqueadas: conquistasAlcancadas(jaNasceu, []) },
+    achievements: { desbloqueadas: conquistasAlcancadas({ nascidos: jaNasceu }, []) },
   };
 }
 

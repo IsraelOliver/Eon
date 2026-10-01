@@ -92,8 +92,14 @@ function Faixa({ anuncio, onFim }: { anuncio: Anuncio; onFim: (serie: number) =>
       >
         {/* Recorte arredondado, como uma miniatura. A arte é exibida no tamanho
             exato do arquivo da densidade do aparelho: nada é esticado. */}
-        <View style={[styles.moldura, { borderColor: comAlfa(c.accent, 0.4) }]}>
-          <Image source={conquista.imagem} style={styles.arte} />
+        <View
+          style={[
+            styles.moldura,
+            // sem arte ainda: o espaço fica, vazio — nunca uma arte emprestada
+            { borderColor: conquista.imagem ? comAlfa(c.accent, 0.4) : 'transparent' },
+          ]}
+        >
+          {conquista.imagem ? <Image source={conquista.imagem} style={styles.arte} /> : <View style={styles.arte} />}
         </View>
 
         <View style={styles.textos}>

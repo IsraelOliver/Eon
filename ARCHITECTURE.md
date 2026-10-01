@@ -18,9 +18,10 @@ src/
         generate.ts          → gera o mundo (semente + nível do mar como parâmetros)
         nature.ts            → decoração natural do mundo selvagem (árvores, pedras…)
         destaque.ts          → escolhe a novidade a mostrar depois de aprender (+ a frase)
-        selecao.ts           → qual construção está sob o toque (+ nomes das construções)
+        selecao.ts           → qual construção está sob o toque (+ nome e gênero das construções)
         inspect.ts           → descreverTile(): bioma, altitude e umidade de um tile
         marcos.ts            → PROGRESSÃO DA VILA: catálogo de marcos + marcosPendentes()
+        estadoDosRamos.ts    → o que cada especialização já fez no mundo (só leitura, p/ "Seu conhecimento")
         growth.ts            → gerarEventosDeCrescimento(): influências → eventos (crescimento comum)
         growthPlacement.ts   → colocarCrescimento(): evento → lugar válido + sprite
         growthElements.ts    → aplicarMarcos() e aplicarEventosDeCrescimento() → GrowthElement[] + vilas
@@ -83,6 +84,10 @@ src/
       hooks/useAchievements.ts → guarda o estado; cada ação é uma função pura
       components/AchievementToast.tsx → banner global que desce do topo
       components/AchievementsScreen.tsx → a coleção (aberta por Configurações)
+    knowledge/               → "Seu conhecimento" (não importa world nem learning)
+      presentation/resumoDoConhecimento.ts → obterResumoDoConhecimento(): temas, afinidade e frases (pura)
+      components/KnowledgeScreen.tsx → a tela (secundária do Mundo, por cima do mapa)
+      components/KnowledgeButton.tsx → o acesso discreto no topo do Mundo
     onboarding/              → boas-vindas de uma jornada nova
       regra.ts               → quando as boas-vindas ao Mundo aparecem (pura)
       components/JourneyIntro.tsx → o cartão por cima do mundo
@@ -90,7 +95,6 @@ src/
       components/
         SettingsMenu.tsx     → tela "Configurações": Conquistas, Aparência, Sobre (+ Desenvolvedor), zona de perigo
         AboutScreen.tsx      → "Sobre o Éon": descrição, versão (expo-constants), créditos
-        TopoDaTela.tsx       → o topo ‹ + título das telas de Configurações
       hooks/
         useDevMode.ts        → modo desenvolvedor: 5 toques secretos liga/desliga
   persistence/               → o save (camada de composição, como app/)
@@ -106,6 +110,7 @@ src/
     ui/Button.tsx            → botão reutilizável
     ui/ActionBar.tsx         → barra de ações: cápsula central embaixo (só ícones)
     ui/Window.tsx            → janela base: fundo escurecido, fade, título, conteúdo, rodapé
+    ui/TopoDaTela.tsx        → o topo ‹ + título das telas cheias (Configurações, Seu conhecimento)
     ui/Slider.tsx            → controle deslizante (avisa o valor ao soltar)
     ui/Gradient.tsx          → degradê linear vertical (único lugar que sabe desenhar um)
     ui/icons.ts              → ícones da interface (único lugar para trocar por pixel art)
@@ -206,6 +211,8 @@ toque no botão → componente chama função recebida por props
 | Criar uma conquista nova                | `achievements/engine/regras.ts` (regra) + `scripts/gerar-sprite-conquista.ps1` (arte) + `achievements/data/achievements.ts` (texto) |
 | Mudar o banner de conquista             | `achievements/components/AchievementToast.tsx` |
 | Mudar a tela de Conquistas              | `achievements/components/AchievementsScreen.tsx` |
+| Mudar as frases/ordem de "Seu conhecimento" | `knowledge/presentation/resumoDoConhecimento.ts` (`FRASE`, `ASSUNTO_DO_TEMA`, `ORDEM_DOS_TEMAS`) |
+| Mudar a tela "Seu conhecimento"         | `knowledge/components/KnowledgeScreen.tsx` (acesso: `KnowledgeButton.tsx`) |
 | Mexer na gravação/chave do save         | `persistence/storage.ts` (`@eon/save`) |
 | Mexer na aleatoriedade do crescimento   | `world/engine/growthElements.ts` (`rngDeCrescimento`) |
 | Mexer na ponte aprender → mundo         | `app/index.tsx` (`aoAprender`)        |
@@ -366,6 +373,12 @@ não troca no meio do scroll, e dá para marcar como visto na hora sem ele se
 recalcular. Conquista e notícia real andam **uma por entrada** — a vitrine só tem
 lugar para uma, e marcar o lote todo como visto engoliria as outras sem mostrá-las.
 
+**A exceção é a manchete de agora.** Quando um aprendizado muda o mundo com o
+Discovery aberto (a leitura cobre o feed), o Pulse troca **na hora** para a
+manchete dele — ao voltar ao feed, ela já está lá — e a notícia entra na fila já
+vista. Aprendizado que só soma afinidade não troca nada. Veja "Notícias são
+efêmeras".
+
 #### Notícia ambiental: só fala do que existe
 
 `world/engine/pulsoAmbiental.ts` lê só o `WorldSnapshot` (o que a composição já
@@ -410,9 +423,9 @@ desenha o ícone, e nenhum dos dois importa o outro.
 
 As conquistas **desbloqueadas** vêm da feature `achievements` e são salvas (veja
 "Conquistas"). O que é de sessão é só o **"ainda não mostrada no Pulse"**: as
-vistas nascem com tudo o que já estava desbloqueado na hidratação, igual às
-notícias, que começam a contar do tamanho do crescimento salvo. Reabrir o app não
-ressuscita marcos nem notícias antigas.
+vistas nascem com tudo o que já estava desbloqueado na hidratação; as notícias
+só nascem de aprendizados desta sessão. Reabrir o app não ressuscita marcos nem
+notícias antigas.
 
 O banner anuncia a conquista **no instante** em que ela acontece; o Pulse a mostra
 na próxima entrada no feed, como vitrine. São dois momentos, não um aviso repetido.
@@ -420,27 +433,40 @@ na próxima entrada no feed, como vitrine. São dois momentos, não um aviso rep
 `learning` não importa `achievements`: a vitrine recebe `ConquistaDoPulso` (id,
 nome, frase) já em texto, montada pela composição a partir do catálogo.
 
-**Recomeçar jornada limpa tudo junto:** a lista de construções encolhe → as
+**Recomeçar jornada limpa tudo junto:** o mundo é recriado (`gerando`) → as
 notícias são apagadas; as conquistas zeram → as vistas são podadas para o que
 ainda existe. Nada de notícia fantasma de civilização apagada, e reconquistar um
 marco volta a avisar.
 
 #### Notícias são efêmeras
 
-`world/engine/destaque.ts` expõe `fraseDeCrescimento(elemento)` — a **mesma**
-frase que o banner do mundo usa, sozinha, para o feed não precisar de um segundo
-catálogo de textos.
+A notícia nasce do **acontecimento**, nunca de comparar o mapa depois:
 
-O resto é da composição (`app/index.tsx`): um `useRef` guarda quantas construções
-já viraram notícia e um efeito traduz só as que nasceram depois. Nada disso entra
-no save, de propósito — **o que aconteceu já está lá** (nas construções); o que é
-passageiro é o *"isto acabou de acontecer"*.
+```
+aprender → avancarProgressao → aplicarMarcos ─acontecimentos─▶ manchetePrincipal
+         → world.manchete (evento de uma vez) → composição → Pulse (na hora) + fila
+```
 
-**Crescimento do modo dev não vira notícia.** O filtro é estrutural, não uma
-flag: só elementos com `origemConhecimentoId` entram na fila, e
-`aplicarCrescimentoDev` chama `aplicarEventos` **sem origem**. Notícia é o que o
-conhecimento causou — cem casas criadas em teste não entopem a fila de quem está
-jogando.
+- **`aplicarMarcos` devolve `acontecimentos`**: os degraus que de fato aconteceram
+  nesta execução (sem lugar fica de fora), cada um com a construção que criou ou
+  evoluiu (caminhos: nenhuma).
+- **`manchetePrincipal`** (`world/engine/destaque.ts`, junto da política do
+  destaque) escolhe **uma**: especialização > construção criada/evoluída > a Era
+  das Especializações (`eraAbriuAgora`, frase `FRASE_DA_ERA` em marcos.ts) >
+  caminhos. Empate entre construções: a `PRIORIDADE` do destaque (a da câmera);
+  empate de resto: o primeiro do catálogo. O texto é a `frase` do degrau — a
+  fonte única das notícias, a mesma do aviso do mundo. Nada aconteceu → `null`.
+- **`useWorld` guarda a manchete como evento de uma vez** (`manchete` +
+  `consumirManchete`, como o `destaque`), só no `avancarProgressao`: o
+  crescimento por evento (dev) não produz manchete.
+- **A composição consome:** com o Discovery aberto, troca o `pulso` na hora
+  (`quando: 'agora'`) e enfileira a notícia **vista**; fechado (o simulador do
+  modo dev aprende com o mundo à vista), enfileira **não vista** e ela sai na
+  próxima entrada. O primeiro crescimento da jornada usa a frase especial.
+- Nada disso entra no save — **o que aconteceu já está lá** (nas construções); o
+  que é passageiro é o *"isto acabou de acontecer"*.
+- Uma manchete por aprendizado: na 20ª, a casa grande ganha da Era (a Era tem o
+  banner da conquista); caminhos só viram manchete se nada mais aconteceu.
 
 A fila é **cronológica**: a mais antiga não vista é a próxima a ser contada, uma
 por entrada. Vista uma vez, nunca mais toma a vez de ninguém, mas continua na
@@ -452,6 +478,28 @@ declarado em `learning/presentation/worldPulse.ts`. Para o feed, notícia é tex
 assunto e hora; quem sabe que aquilo veio de um `GrowthElement` é a composição.
 
 ### O Discovery Feed
+
+**A ordem muda a cada abertura do app, e fica fixa durante a sessão.**
+(`learning/presentation/ordemDoFeed.ts`)
+
+- **Uma vez por abertura real:** o `AppScreen` sobe `discoveryLaunchSequence` (em
+  `@eon/preferences`, fora do save da jornada) e o `Jogo` calcula a ordem ao
+  montar (`useState` com inicializador): `ordemDaSessao(catálogo, { semente da
+  jornada, número da abertura, aprendidas, evitarPrimeira })`. Navegar, abrir
+  Configurações ou remontar a tela não recalcula nada.
+- **Cobre o catálogo inteiro;** as aprendidas continuam saindo pelo perfil
+  (`paraDescobrir`), a fonte de verdade de sempre. Aprender só tira a curiosidade
+  da lista — as outras seguem na mesma ordem relativa. Nenhuma lista de "ocultas".
+- **Determinística:** Fisher–Yates com um gerador pequeno (mulberry32) semeado
+  por jornada + abertura. Nada de `Date.now` nem `Math.random`.
+- **Não repete a abertura anterior:** `ultimaCuriosidadeInicialId` guarda quem
+  abriu a última sessão; se ela voltaria a ser a primeira e há outra disponível,
+  as duas trocam de lugar.
+- **Pronto para recomendação:** `ordemDaSessao` é uma `EstrategiaDeOrdem` (catálogo
+  + contexto → ids). Trocar o embaralhar por rankeamento é mudar essa linha; o
+  feed, o simulador do modo dev e `aplicarOrdem` não mudam.
+- As preferências passaram a ser gravadas **mesclando** (`salvarPreferencias`
+  recebe só o que mudou): trocar a aparência não apaga o contador, e vice-versa.
 
 **O feed principal mostra somente curiosidades ainda não aprendidas.**
 Curiosidades aprendidas deixam esse fluxo e pertencem à coleção de conhecimento
@@ -993,6 +1041,20 @@ não são apagados**: são lidos e convertidos.
 
 A primeira conquista é **Primeira casa!** (`first-house`): desbloqueia na primeira
 vez que uma casa nasce na jornada, anuncia com um banner global e fica salva.
+A segunda é **Era das Especializações** (`era-das-especializacoes`): desbloqueia
+ao chegar a 20 curiosidades aprendidas (veja "A Era das Especializações").
+
+- **As regras recebem fatos da jornada** (`FatosDaJornada`: `nascidos`,
+  `especializacoesDesbloqueadas`), traduzidos pela composição —
+  `achievements` não importa `world` nem `learning`. O nascimento chega pelo
+  `r.adicionados` do engine; o fim da fase base, pelo `aoAprender` (o mesmo
+  caminho do APRENDI e do simulador). Repetir um fato não faz nada: o motor
+  nunca devolve uma conquista já desbloqueada.
+- **Arte opcional, só enquanto não existe:** `imagem` e `imagemBloqueada` são
+  opcionais no catálogo (`data/achievements.ts`). Sem arte, a lista e o banner
+  mantêm o espaço de 64×64, vazio e sem moldura — nunca uma arte emprestada. A
+  Era das Especializações está assim até a arte chegar; é só preencher as duas
+  linhas comentadas no catálogo.
 
 ```
 engine de crescimento → r.adicionados
@@ -1119,6 +1181,55 @@ banner; ela é o registro.
   sempre da coleção — nunca é um campo do catálogo.
 - **UI moderna, sprite retrô:** fontes, bordas e botões seguem os tokens da
   paleta; só a arte é pixel art.
+
+## Seu conhecimento (features/knowledge)
+
+"Que tipo de conhecimento está moldando meu mundo?" Uma tela secundária do
+Mundo — não um destino da ActionBar. Não é XP, árvore de habilidades, ranking
+nem inventário: é o registro do perfil temático da jornada e do que ele já fez
+no mapa.
+
+- **Acesso:** `KnowledgeButton`, uma pílula discreta no topo-esquerdo do Mundo,
+  dentro da camada do mapa (some com ele quando o Discovery está aberto e durante
+  a recriação). Com o modo dev, a pílula do simulador desce um pouco para não
+  ficar em cima dela.
+- **A tela** (`KnowledgeScreen`) é uma camada de tela cheia, como a coleção de
+  Conquistas (`zIndex: 40`, acima da barra; voltar do Android fecha). O mapa
+  **não sai da árvore**: câmera, Skia e lifecycle ficam como estão. Como a tela
+  cobre o mapa, o fim do `FadeOut` chama `onFechado`, e a composição sobe o
+  `despertarMapa` — o mesmo reenvio da cena da volta do Discovery (veja "Por que
+  o mapa voltava em branco").
+- **Só leitura, nada salvo.** Tudo vem do estado que já existe:
+  - **descobertas** — `aprendizado.perfil.aprendidas.length`;
+  - **afinidade** — `aprendizado.perfil.porTema` (a mesma fonte das especializações);
+  - **nome do tema** — `NOMES_DE_TEMA` (learning);
+  - **ramos** — `estadoDosRamos(world.construcoes, progresso)` (world): por ramo de
+    `ESPECIALIZACOES`, quantos tiers já aconteceram (`degrausQueJaAconteceram`),
+    quantos existem, a construção do ramo como está hoje (o nome do toque,
+    `NOME_DA_CONSTRUCAO`, + o gênero, `ARTIGO_DA_CONSTRUCAO`) e `proximoPerto`.
+  Reiniciar a jornada ou reabrir o app dá o mesmo resumo: as fontes estão no save.
+- **Os limiares não saem do mundo.** `proximoPerto` = era aberta e o próximo
+  tier a até `PERTO_DO_PROXIMO` (2) curiosidades do tema. A tela recebe só o
+  booleano: nunca mostra número de tier, barra ou "8/10".
+- **As frases** (`obterResumoDoConhecimento`): um estado por tema
+  (`estadoDoTema`) e uma tabela (`FRASE`), sem `if` por tema:
+  - sem descoberta → "ainda espera pela sua primeira descoberta";
+  - tema **sem ramo**: abaixo de `AFINIDADE_RELEVANTE` (3) "ainda está começando";
+    a partir dela, "começando a deixar marcas" — nada de prédio inventado;
+  - tema **com ramo**, nenhum tier: "está crescendo" (inclusive com a era
+    fechada — não revela o que espera); com `proximoPerto`, "pode transformar o
+    mundo em breve";
+  - tier no mapa: "Um ponto de observação já faz parte do seu mundo"; com o
+    próximo perto, "Seu ponto de observação continua evoluindo"; todos os tiers,
+    "Seu posto de observação continua refletindo tudo o que você aprendeu sobre o céu".
+  O assunto de cada tema ("o céu", "o passado"…) é `ASSUNTO_DO_TEMA`.
+- **Ramo novo em `ESPECIALIZACOES`** aparece sozinho: `estadoDosRamos` percorre o
+  catálogo, e as frases usam o nome e o gênero da construção dele (sem gênero
+  cadastrado, a frase sai sem artigo).
+- **Ordem editorial fixa** (`ORDEM_DOS_TEMAS`: Astronomia, História, Geologia,
+  Natureza). Nunca ordenada pelo maior número: a tela não é ranking.
+- **Visual:** cartões discretos (`cartao` + `line`), nome e número na mesma
+  linha, frase embaixo. O laranja só no número dos temas que já mudaram o mapa.
 
 ## A jornada consolida o mundo
 
@@ -1332,8 +1443,9 @@ caminhos: 0 = acampamento, 1–2 = assentamento, 3–4 = vila.
   virou casa: "Este foi o primeiro abrigo do seu mundo. Com novos conhecimentos,
   ele cresceu." e "12 descobertas, a última: …". A história inteira fica pronta
   para uma tela de histórico futura.
-- **Notícias:** criação e evolução viram notícia do World Pulse e levam a câmera
-  até lá (`destaque`); só a criação conta como "nascimento" para as conquistas.
+- **Notícias:** o que um aprendizado fez vira UMA manchete do World Pulse
+  (`manchetePrincipal`), e criação e evolução levam a câmera até lá
+  (`destaque`); só a criação conta como "nascimento" para as conquistas.
 - **Save:** nenhum formato novo. `marco` e `evolucoes` são campos opcionais do
   `GrowthElement`, que já é salvo inteiro. Os ids da sequência anterior do
   playtest (`vila-casa-5`, `vila-casa-grande-12`, `vila-casa-16`,
@@ -1353,6 +1465,103 @@ caminhos: 0 = acampamento, 1–2 = assentamento, 3–4 = vila.
   (`porInfluencia`, `porTema`); `gerarEventosDeCrescimento` e o crescimento por
   evento continuam no código. Eles são a base dos marcos temáticos e das
   combinações — só não constroem mais um prédio por curiosidade.
+
+### A Era das Especializações (fim da fase base)
+
+> As primeiras 20 curiosidades constroem a **base** da civilização. Ao concluir
+> essa fase, a **Era das Especializações** é desbloqueada. A partir daí,
+> afinidades temáticas poderão criar e evoluir ramos especializados da vila.
+
+```
+1 … 20  fase base      cabana → fogueira → casas → evoluções → caminhos maduros
+20      vila consolidada → Era das Especializações desbloqueada (+ conquista)
+21…     (futuro) marcos temáticos por afinidade — nenhum existe ainda
+```
+
+- **`especializacoesDesbloqueadas(progresso)`** (`engine/marcos.ts`) é a fonte
+  única: verdadeira quando o total aprendido chega a `FIM_DA_FASE_BASE` (20).
+  **Derivada**, não salva — o total já está no perfil; nada para sair de
+  sincronia. Recomeçar a jornada zera o perfil, e com ele a era.
+- **Não é um degrau do catálogo:** não nasce sprite, não mexe no mapa. Depois da
+  20ª, nenhum prédio temático nasce — é só a capacidade.
+- **Como um marco temático vai usá-la (não implementado):** uma condição nova em
+  `CondicaoDeMarco`, algo como `{ tipo: 'especializacao'; tema; afinidade }`,
+  cumprida quando a era está desbloqueada **e** a contagem do tema (`porTema` do
+  perfil, que entraria em `ProgressoDaJornada`) chega ao limiar.
+- **O primeiro ramo é Astronomia** (abaixo).
+
+### Especializações (`ESPECIALIZACOES`, em engine/marcos.ts)
+
+Um catálogo de **ramos temáticos**, cada um com **tiers** em ordem. Cada tier é
+um degrau comum do motor (`DefinicaoDeMarco`): condição
+`{ tipo: 'especializacao', tema, afinidade }` e efeito `criar` ou `evoluir` — a
+mesma memória de origem, a mesma notícia, a mesma câmera. Nenhum
+`if (tema === …)` fora do catálogo: um tema novo (Geologia, Natureza, História)
+é um ramo novo na lista.
+
+```
+Astronomia   tier 1  afinidade ≥ 5   criar   telescópio (ponto de observação)
+             tier 2  afinidade ≥ 10  evoluir telescópio → posto de observação
+```
+(5 e 10 são provisórios, para calibrar.)
+
+- **Afinidade = `porTema` do perfil** (a fonte de verdade de sempre). A memória
+  (quem contribuiu) é a lista de ids do tema em ordem — `aprendidasPorTema`,
+  derivada pela composição do perfil + catálogo em `aoAprender`. Nada novo é salvo.
+- **Só depois da Era:** a condição exige que a era já estivesse aberta **antes**
+  deste aprendizado. Chegar a 20 não constrói nada, mesmo com afinidade sobrando.
+- **Quem dispara é uma curiosidade do tema:** a curiosidade que acabou de ser
+  aprendida precisa ser do tema. Ela é o gatilho; as do tema até ali, os
+  contribuintes. Afinidade acumulada antes da era continua valendo.
+- **No máximo um tier por aprendizado:** de cada ramo, `marcosPendentes` só
+  avalia o **próximo** tier ainda não feito. Com afinidade 12 ao abrir a era: a
+  próxima de Astronomia cria o tier 1; a seguinte o evolui.
+- **Prédios especializados evoluem, não se multiplicam:** o tier 2 é um `evoluir`
+  com `alvo: criadaPor 'astronomia-tier-1'` — mesma construção, mesmo lugar,
+  mesma origem, um capítulo novo em `evolucoes`. O balão conta o capítulo atual
+  ("Seus estudos sobre o céu começaram aqui com um pequeno telescópio. Novas
+  descobertas fizeram o lugar crescer.").
+- **Geografia própria** (`GeografiaDaEspecializacao`, declarada no efeito
+  `criar` do tier, com `lugar: 'especializado'`). O motor não sabe de
+  Astronomia: cada ramo declara a sua.
+  - **`preferencia: PreferenciaGeografica`** — `distanciaDaVila` (mínima, abaixo
+    dela é recusado; máxima ideal, além dela a nota cai), `perto.montanha`
+    (distância ideal até o relevo, pela `distMont` do mundo — aos pés, nunca em
+    cima: montanha não é terreno firme) e `terreno` (nota por tipo: área aberta
+    vale mais). É NOTA, não regra: terreno firme longe d'água, fora da praça,
+    da rua e das construções continuam obrigatórios (`procurarLugar` de sempre).
+  - **Fallback progressivo** (`colocarComPreferencia`, growthPlacement): (1) a
+    preferência inteira; (2) só a distância, numa faixa mais larga; (3) a
+    periferia da vila. O marco não some num mapa sem a configuração perfeita.
+    Determinístico pelo rng da execução (semente + sequência).
+  - **Reserva de crescimento:** a especializada procura lugar já com o espaço do
+    MAIOR estágio da linhagem dela (`linhagemDaConstrucao`): o telescópio só nasce
+    onde o posto de observação também cabe — o tier 2 nunca fica sem espaço.
+    (A vila comum não reserva: o layout dela não mudou.)
+  - **`acesso: RotaDeAcesso`** — a trilha própria: `custos` de terreno (por onde
+    passa e quanto custa; ausente = proibido), `curva` (quão irregular) e um
+    traço por **estágio** da construção (criação, 1ª evolução…).
+- **Astronomia:** 30 a 60 tiles do centro da vila, ~6 tiles da montanha, céu
+  aberto (planície e savana); a trilha contorna montanha e neve (proibidas),
+  evita floresta (cara), e é bem mais fina que os caminhos da vila. Valores para
+  calibrar, todos em `GEOGRAFIA_DA_ASTRONOMIA` (marcos.ts).
+- **A rota de acesso** (`rotaDeAcesso`, paths.ts) é a mesma `trilha()` da vila
+  (Dijkstra em 8 direções + `ondular`), agora com custos de terreno por
+  parâmetro. Sai da porta e para no PRIMEIRO caminho da vila que encontra —
+  começa aproveitando a rede e depois se separa. Se o relevo fechar tudo, tenta
+  com os custos da vila (montanha cara, mas possível).
+- **Calculada uma vez e guardada** em `Settlement.acessos` (`{ construcao, tiles }`,
+  salvo com a vila). A rede da vila é refeita sempre que muda, mas a rota de
+  acesso não: ela só é redesenhada no traço do estágio atual da construção.
+  Evoluir não muda a posição nem a trilha; só a firma um pouco (tier 1: pouco
+  usada; tier 2: estabelecida — ainda mais estreita que os caminhos da vila).
+- As especializadas ficam FORA da rede residencial (não ganham trilha até o
+  fogo); onde a rota de acesso encontra a rede, aparece o caminho da vila.
+- **Artes:** `especializacoes/telescopy_tier1.png` (15×18 px, papel
+  `telescopio`) e `especializacoes/telescopy_tier2.png` (24×17 px, papel
+  `posto_de_observacao`), ligadas pelo `ARTE_DO_PAPEL` (spriteAssets.ts). O
+  espaço no chão (`ARTE_PX`) é o tamanho delas.
+- No World Pulse, os dois falam do céu (assunto `observatorio`).
 
 ## Crescimento do mundo (world/engine/growth.ts)
 
@@ -1865,14 +2074,20 @@ useColors()                        → o que os componentes leem
 
 ### Simulação da jornada
 
-Para testar a progressão real (0 a 20) sem ler curiosidade por curiosidade.
+Para testar a progressão real (da primeira à última curiosidade do catálogo)
+sem ler curiosidade por curiosidade.
 **Não é um sistema paralelo:** cada passo faz o que o APRENDI faz —
 `aprendizado.aprender(curiosidade)` e, se deu 'aprendida', o mesmo `aoAprender`
 da composição. Daí em diante é a produção: progressão, criação, evolução,
 caminhos, câmera, banner, notícias, World Pulse, save.
 
-- **Qual curiosidade:** a primeira ainda não aprendida na ordem do catálogo
-  (`paraDescobrir`, a do feed). Sem sorteio; repetida não existe.
+- **Qual curiosidade:** a ordem do feed desta sessão (`paraDescobrir` sobre
+  `ordemDoFeed`), com um cuidado para as especializações acontecerem
+  (`escolhaDoSimulador`, app/index.tsx): cada tier pede uma curiosidade do tema
+  aprendida DEPOIS da fase base. Antes da era, o simulador pula as do tema
+  enquanto sobrarem só as necessárias (uma por tier pendente, `tiersPendentes`);
+  depois da era, aprende primeiro as dos temas que ainda têm tier. Sem sorteio;
+  repetida não existe. (No Discovery de verdade, nada disso: é a pessoa quem escolhe.)
 - **Um passo por render** (`useSimuladorDaJornada`, em settings/hooks, genérico:
   não conhece learning nem world): o aprendizado real parte do perfil do render,
   então dois no mesmo instante se atropelariam. Um estado só —
@@ -1886,8 +2101,9 @@ caminhos, câmera, banner, notícias, World Pulse, save.
 - **Linha do tempo e próximo marco** saem do catálogo real (`etapasDaJornada`,
   que agrupa `MARCOS` por limiar; os rótulos são o `nome` de cada degrau). O
   estado de cada limiar usa a mesma regra do motor (`quemJaAconteceu`): ✓
-  aconteceu, … alcançado mas sem lugar ainda, ○ ainda não. "/20" é o maior
-  limiar do catálogo.
+  aconteceu, … alcançado mas sem lugar ainda, ○ ainda não. A linha do tempo
+  só mostra a fase base (`MARCOS`); o limite ("/27") é o tamanho do catálogo de
+  curiosidades — a jornada inteira passa da fase base e entra nas especializações.
 - **Reiniciar simulação** pausa e chama o MESMO `recomecarJornada` do app (as
   fases seguras de recriação do mundo).
 
@@ -1954,7 +2170,8 @@ Por cima disso, o detalhe esparso de sempre:
   carregados uma vez por `hooks/useSpriteImages.ts` (um `useImage` por arquivo,
   em ordem fixa por causa da regra dos hooks).
 - **Pastas dos sprites:** `arvores/` (árvore, pinheiro, acácia, cacto), `casas/`,
-  `marcos/` (cabana, fogueira), `construcoes/` (fonte, mina) e `old/`. **Todo
+  `marcos/` (cabana, fogueira), `construcoes/` (fonte, mina),
+  `especializacoes/` (telescopy_tier1, telescopy_tier2) e `old/`. **Todo
   sprite substituído vai para `old/`** em vez de ser apagado; nada ali é
   carregado (o Metro só empacota o que tem `require`). Os arquivos e as chaves
   de imagem têm o nome da **arte**; o engine continua com o nome do **papel** —

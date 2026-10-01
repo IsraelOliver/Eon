@@ -6,10 +6,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors, useEstiloDaStatusBar, type ThemePreference } from '@/shared/theme/colors';
 import { Button } from '@/shared/ui/Button';
+import { TopoDaTela } from '@/shared/ui/TopoDaTela';
 import { Window } from '@/shared/ui/Window';
 
 import { AboutScreen } from './AboutScreen';
-import { TopoDaTela } from './TopoDaTela';
 
 const FADE_MS = 200;
 const MARGEM = 20;

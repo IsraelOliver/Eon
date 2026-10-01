@@ -2,7 +2,7 @@
 // O ESTADO DAS CONQUISTAS — o que está desbloqueado e o que anunciar agora.
 // Puro: cada função recebe um estado e devolve outro. O hook só os guarda.
 // =====================================================================
-import { conquistasAlcancadas, ehAchievementId, type AchievementId, type Nascidos } from './regras';
+import { conquistasAlcancadas, ehAchievementId, type AchievementId, type FatosDaJornada } from './regras';
 
 /** Um anúncio na fila do banner. `serie` é única por anúncio, para sempre. */
 export interface Anuncio {
@@ -42,15 +42,16 @@ export function estadoInicial(salvas?: readonly unknown[] | null): EstadoDeConqu
 }
 
 /**
- * Algo nasceu no mundo. Se isso desbloqueia alguma conquista, ela entra nas
+ * Algo aconteceu na jornada (nasceu no mundo, a fase base terminou…). Se isso
+ * desbloqueia alguma conquista, ela entra nas
  * desbloqueadas **e** na fila do banner — no mesmo passo, então não existe
  * conquista anunciada que não esteja salva, nem salva que não tenha sido
  * anunciada no momento em que aconteceu.
  *
  * Sem novidade, devolve o MESMO objeto: nada re-renderiza, nada é regravado.
  */
-export function registrarNascimentos(estado: EstadoDeConquistas, nascidos: Nascidos): EstadoDeConquistas {
-  const novas = conquistasAlcancadas(nascidos, estado.desbloqueadas);
+export function registrarFatos(estado: EstadoDeConquistas, fatos: FatosDaJornada): EstadoDeConquistas {
+  const novas = conquistasAlcancadas(fatos, estado.desbloqueadas);
   if (novas.length === 0) return estado;
 
   const anuncios = novas.map((id, i) => ({ id, serie: estado.serie + i + 1 }));

@@ -3,8 +3,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { gerarMundo } from '../engine/generate';
 import { NOMES_DE_CRESCIMENTO } from '../engine/growth';
 import { aplicarEventosDeCrescimento, aplicarMarcos, rngDeCrescimento } from '../engine/growthElements';
-import { escolherDestaque, fraseDeCrescimento, type Destaque } from '../engine/destaque';
-import { marcosPendentes, type ProgressoDaJornada } from '../engine/marcos';
+import {
+  escolherDestaque, fraseDeCrescimento, manchetePrincipal, type Destaque, type Manchete,
+} from '../engine/destaque';
+import { eraAbriuAgora, marcosPendentes, type ProgressoDaJornada } from '../engine/marcos';
 import { descreverTile } from '../engine/inspect';
 import { FAIXA_NIVEL_MAR, FAIXA_SEMENTE, REGRAS } from '../engine/rules';
 import type {
@@ -41,6 +43,12 @@ type Estado = {
    * `destaque`: estado de sessão, fora do save.
    */
   nascimento: readonly GrowthElement[] | null;
+  /**
+   * A manchete do último aprendizado que mudou o mundo — UMA, já escolhida
+   * (`manchetePrincipal`). Evento de uma vez só, como o `destaque`: a
+   * composição a consome; fora do save.
+   */
+  manchete: Manchete | null;
 };
 
 /**
@@ -80,6 +88,7 @@ function criarEstado(idMensagem: number, seed: number, nivelMar: number): Estado
     idMensagem,
     destaque: null,
     nascimento: null,
+    manchete: null,
   };
 }
 
@@ -99,6 +108,7 @@ function restaurarEstado(salvo: WorldSnapshot): Estado {
     destaque: null,
     // O que veio do save já nasceu há muito tempo: não é nascimento de agora.
     nascimento: null,
+    manchete: null,
   };
 }
 
@@ -114,7 +124,7 @@ export function useWorld(salvo?: WorldSnapshot | null) {
   /** Recriação pedida e ainda não executada. Enquanto existe, o mapa sai da tela. */
   const [pedido, setPedido] = useState<{ seed: number; nivelMar: number } | null>(null);
   const {
-    mundo, crescimento, settlements, growthSequence, mensagem, idMensagem, destaque, nascimento,
+    mundo, crescimento, settlements, growthSequence, mensagem, idMensagem, destaque, nascimento, manchete,
   } = estado;
 
   // buffer pesado: só é refeito quando o mundo muda
@@ -152,8 +162,12 @@ export function useWorld(salvo?: WorldSnapshot | null) {
    */
   function avancarProgressao(progresso: ProgressoDaJornada) {
     setEstado((s) => {
+      // a era não é um degrau (não constrói nada), mas é notícia do mundo
+      const eraAbriu = eraAbriuAgora(progresso);
       const pendentes = marcosPendentes(progresso, s.crescimento, s.settlements);
-      if (pendentes.length === 0) return s;
+      if (pendentes.length === 0) {
+        return eraAbriu ? { ...s, manchete: manchetePrincipal([], true) } : s;
+      }
       const rng = rngDeCrescimento(s.mundo.seed, s.growthSequence);
       const r = aplicarMarcos(s.mundo, s.crescimento, s.settlements, pendentes, rng);
       // novidade é o que nasceu E o que evoluiu: os dois levam a câmera até lá
@@ -172,6 +186,8 @@ export function useWorld(salvo?: WorldSnapshot | null) {
         // nascimento é só o que NASCEU (é o que as conquistas contam)
         nascimento:
           r.adicionados.length > 0 ? [...(s.nascimento ?? []), ...r.adicionados] : s.nascimento,
+        // nada aconteceu (tudo sem lugar) → nenhuma manchete; a anterior não volta
+        manchete: manchetePrincipal(r.acontecimentos ?? [], eraAbriu),
       };
     });
   }
@@ -230,6 +246,11 @@ export function useWorld(salvo?: WorldSnapshot | null) {
     setEstado((s) => (s.destaque ? { ...s, destaque: null } : s));
   }, []);
 
+  /** A composição avisa que já levou a manchete ao World Pulse; ela não volta. */
+  const consumirManchete = useCallback(() => {
+    setEstado((s) => (s.manchete ? { ...s, manchete: null } : s));
+  }, []);
+
   /** A composição avisa que já tratou os nascimentos; eles não voltam. */
   const consumirNascimento = useCallback(() => {
     setEstado((s) => (s.nascimento ? { ...s, nascimento: null } : s));
@@ -262,6 +283,9 @@ export function useWorld(salvo?: WorldSnapshot | null) {
     /** O que nasceu e ainda não foi tratado (ou null): o `r.adicionados` canônico. */
     nascimento,
     consumirNascimento,
+    /** A manchete do último aprendizado que mudou o mundo (ou null). */
+    manchete,
+    consumirManchete,
     terreno,
     caminhos: camadaCaminhos,
     elementosParaDesenho: paraDesenho,

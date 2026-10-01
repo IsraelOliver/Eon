@@ -1,7 +1,9 @@
 import type { SpriteKey } from '../engine/types';
 
-// Cada letra é uma cor da paleta SPAL, "." é transparente
-export const SPRITES: Record<SpriteKey, string[]> = {
+// Cada letra é uma cor da paleta SPAL, "." é transparente. É o desenho de
+// RESERVA de quem não tem PNG. Ausente = não desenha nada (as especializações
+// sem arte ainda: nada de placeholder inventado).
+export const SPRITES: Partial<Record<SpriteKey, string[]>> = {
   casa: ['...R...', '..RrR..', '.RrrrR.', 'RrrrrrR', '.wwwww.', '.wdwww.', '.wdwww.'],
   // Desenhos de reserva enquanto o PNG não carrega (as vilas usam os PNGs diagonais).
   casa_maior: ['...R...', '..RrR..', '.RrrrR.', 'RrrrrrR', '.wwwww.', '.wdwdw.', '.wwwww.', '.wdwdw.', '.wwdww.'],

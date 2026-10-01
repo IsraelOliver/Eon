@@ -36,8 +36,9 @@ interface ConquistaNaLista {
   id: AchievementId;
   titulo: string;
   descricao: string;
-  imagem: ImageSourcePropType;
-  imagemBloqueada: ImageSourcePropType;
+  /** Ausente enquanto a arte não existe: o espaço fica vazio. */
+  imagem?: ImageSourcePropType;
+  imagemBloqueada?: ImageSourcePropType;
   desbloqueada: boolean;
 }
 
@@ -148,6 +149,7 @@ function Separador() {
 function LinhaDaConquista({ conquista }: { conquista: ConquistaNaLista }) {
   const c = useColors();
   const { desbloqueada } = conquista;
+  const arte = desbloqueada ? conquista.imagem : conquista.imagemBloqueada;
 
   return (
     <View
@@ -168,14 +170,12 @@ function LinhaDaConquista({ conquista }: { conquista: ConquistaNaLista }) {
       <View
         style={[
           styles.moldura,
-          { borderColor: desbloqueada ? c.accent : c.line },
+          // sem arte ainda: o espaço continua lá, mas vazio — nem moldura
+          { borderColor: !arte ? 'transparent' : desbloqueada ? c.accent : c.line },
         ]}
       >
         {/* Tamanho exato do arquivo da densidade: nada é esticado, nada é tingido. */}
-        <Image
-          source={desbloqueada ? conquista.imagem : conquista.imagemBloqueada}
-          style={styles.arte}
-        />
+        {arte ? <Image source={arte} style={styles.arte} /> : <View style={styles.arte} />}
       </View>
 
       <View style={styles.textos}>

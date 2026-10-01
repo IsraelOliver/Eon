@@ -74,12 +74,13 @@ export interface CuriosityEntry extends Curiosity {
 /**
  * Catálogo inicial para o primeiro playtest do Éon.
  *
- * São 20 curiosidades reais, divididas igualmente entre os quatro temas.
+ * São 27 curiosidades reais: 10 de Astronomia, 6 de Geologia, 6 de Natureza e
+ * 5 de História.
  * As capas e `corAtmosfera` ficaram de fora de propósito para serem adicionadas
  * junto das imagens escolhidas para cada post.
  *
- * Por enquanto, ordem aqui = ordem no feed. A randomização pode ser tratada
- * depois na camada de seleção do Discovery, sem mudar os ids abaixo.
+ * A ordem aqui não é a do feed: o Discovery sorteia a ordem uma vez por sessão
+ * (learning/presentation/ordemDoFeed.ts).
  */
 export const CURIOSIDADES: readonly CuriosityEntry[] = [
   // -------------------------------------------------------------------
@@ -849,6 +850,249 @@ Por isso, impedir todo fogo por longos períodos pode alterar profundamente esse
     ],
 
     verificadoEm: '2026-09-29',
+  },
+  {
+    id: 'pulsares-farois-cosmicos',
+    titulo: 'Existem estrelas mortas que piscam como faróis cósmicos',
+    preview:
+      'Algumas estrelas de nêutrons giram tão rápido que seus feixes de radiação varrem o espaço como a luz de um farol.',
+    conteudo: `
+Quando uma estrela massiva termina a vida em uma supernova, o núcleo que sobra pode colapsar até formar uma estrela de nêutrons: um objeto extremamente compacto, com mais massa que o Sol comprimida em uma região do tamanho de uma cidade.
+
+Algumas dessas estrelas são chamadas pulsares. Elas possuem campos magnéticos intensos e podem girar muito rapidamente, emitindo feixes de radiação próximos aos polos magnéticos.
+
+Esses feixes não precisam apontar na mesma direção do eixo de rotação. Por isso, enquanto a estrela gira, eles varrem o espaço como a luz de um farol. Da Terra, detectamos um pulso sempre que um desses feixes passa pela nossa linha de visão.
+
+Os pulsares podem ser extraordinariamente regulares. Alguns completam centenas de rotações por segundo, o que permite aos astronomos usar seus pulsos como relógios naturais para estudar fenômenos extremos do Universo.
+
+Eles não estão realmente ligando e desligando. O efeito de "piscar" acontece porque vemos o feixe apenas quando ele aponta para nós.
+    `.trim(),
+    tema: 'astronomia',
+    tags: ['pulsares', 'estrela-de-nêutrons', 'supernova', 'radio', 'campo-magnetico'],
+    influencias: [{ chave: 'observacao', peso: 1 }],
+    fontes: [
+      {
+        titulo: 'NASA Science - Pulsars',
+        url: 'https://science.nasa.gov/mission/hubble/science/science-behind-the-discoveries/hubble-pulsars/',
+      },
+      {
+        titulo: 'NASA Science - Fermi Mission Nets 300 Gamma-Ray Pulsars',
+        url: 'https://science.nasa.gov/universe/stars/neutron-stars/pulsars/nasas-fermi-mission-nets-300-gamma-ray-pulsars-and-counting/',
+      },
+    ],
+    verificadoEm: '2026-10-01',
+  },
+
+  {
+    id: 'hd-189733b-chuva-de-vidro',
+    titulo: 'Existe um planeta azul onde pode chover vidro de lado',
+    preview:
+      'HD 189733 b parece azul como a Terra, mas sua atmosfera supera mil graus e ventos violentos podem carregar partículas de silicato quase horizontalmente.',
+    conteudo: `
+HD 189733 b e um exoplaneta gigante gasoso localizado a cerca de 63 anos-luz da Terra. Visto em luz visível, ele possui uma forte tonalidade azul, o que poderia lembrar nosso planeta a primeira vista.
+
+A semelhança termina na cor. HD 189733 b e um "Júpiter quente": um planeta gigante que orbita extremamente perto de sua estrela. A temperatura de sua atmosfera ultrapassa mil graus Celsius e os ventos podem atingir milhares de quilômetros por hora.
+
+Observações com o telescopio espacial Hubble indicam que sua cor azul nao vem de oceanós. Ela está associada a uma atmosfera nebulosa contendo partículas de silicato, materiais relacionados aos que formam vidro.
+
+Em condições tao quentes, silicatos podem condensar em pequenas partículas ou gotículas. Com ventos extremamente fortes, esses materiais poderiam ser carregados quase horizontalmente pela atmosfera - origem da famosa descrição de uma possível "chuva de vidro de lado".
+
+E importante o "possível": não observamos literalmente gotas de vidro caindo na superfície. A descrição resume o que os modelos e observações indicam sobre as partículas de silicato em sua atmosfera extrema.
+    `.trim(),
+    tema: 'astronomia',
+    tags: ['exoplaneta', 'hd-189733b', 'jupiter-quente', 'atmosfera', 'silicatos'],
+    influencias: [{ chave: 'observacao', peso: 1 }],
+    fontes: [
+      {
+        titulo: 'NASA Science - NASAs Hubble Finds a True Blue Planet',
+        url: 'https://science.nasa.gov/missions/hubble/nasas-hubble-finds-a-true-blue-planet/',
+      },
+      {
+        titulo: 'NASA - Rains of Terror on Exoplanet HD 189733b',
+        url: 'https://www.nasa.gov/image-article/rains-of-terror-exoplanet-hd-189733b/',
+      },
+    ],
+    verificadoEm: '2026-10-01',
+  },
+
+  {
+    id: 'lua-encolhendo-lunamotos',
+    titulo: 'A Lua está encolhendo - e isso pode provocar terremotos lunares',
+    preview:
+      'Enquanto seu interior esfria, a Lua se contrai lentamente. A crosta rígida reage formando falhas que ainda podem estar ativas.',
+    conteudo: `
+A Lua parece um mundo geologicamente imóvel, mas seu interior ainda guarda calor. À medida que perde esse calor ao longo de centenas de milhões de anos, o satélite se contrai lentamente.
+
+A NASA estima que a Lua ficou mais de 50 metros "mais magra" ao longo de algumas centenas de milhões de anós. Parece pouco diante de seu tamanho, mas a crosta lunar e rígida e quebradiça.
+
+Quando o interior encolhe, a superfície precisa se ajustar. Partes da crosta quebram e uma seção pode ser empurrada sobre outra, formando falhas de empurrão. Na superfície, elas aparecem como pequenas escarpas semelhantes a degraus.
+
+Imagens do Lunar Reconnaissance Orbiter revelaram milhares dessas falhas jovens distribuidas pela Lua. A análise de dados sísmicos das missões Apollo também indica que algumas delas ainda podem estar ativas.
+
+Isso significa que a Lua nao e completamente "morta". Sua contração gradual, combinada com forças de maré exercidas pela Terra, ainda pode produzir terremotos lunares.
+    `.trim(),
+    tema: 'astronomia',
+    tags: ['lua', 'lunamotos', 'falhas', 'apollo', 'lro'],
+    influencias: [{ chave: 'observacao', peso: 1 }],
+    fontes: [
+      {
+        titulo: 'NASA - Shrinking Moon May Be Generating Moonquakes',
+        url: 'https://www.nasa.gov/news-release/shrinking-moon-may-be-generating-moonquakes/',
+      },
+      {
+        titulo: 'NASA - Shrinking Moon Causing Moonquakes and Faults Near Lunar South Pole',
+        url: 'https://www.nasa.gov/solar-system/moon/shrinking-moon-causing-moonquakes-and-faults-near-lunar-south-pole/',
+      },
+    ],
+    verificadoEm: '2026-10-01',
+  },
+
+  {
+    id: 'devils-tower-colunas-rocha',
+    titulo: 'Uma montanha parece feita de gigantescas colunas de pedra',
+    preview:
+      'Devils Tower, nos Estados Unidos, é formada por enormes colunas poligonais criadas quando rocha derretida esfriou, contraiu e rachou.',
+    conteudo: `
+Devils Tower se ergue cerca de 265 metros acima da paisagem do Wyoming, nos Estados Unidos. Vista de perto, sua superfície parece formada por um conjunto de colunas gigantescas colocadas lado a lado.
+
+A torre e composta por uma rocha ígnea chamada fonolito porfirítico. Quando o material derretido que a originou começou a esfriar e solidificar, ele também se contraiu.
+
+Essa contração produziu fraturas. Quando tensões se distribuem pelo material durante o resfriamento, as rachaduras podem formar padrões poligonais. Muitas das colunas de Devils Tower possuem cinco ou seis lados, embora existam outras formas.
+
+A estrutura nao surgiu simplesmente como uma torre exposta na superfície. A rocha ígnea se formou abaixo do terreno e, ao longo de milhões de anos, as rochas sedimentares mais frágeis que estavam ao redor foram removidas pela erosão, deixando a estrutura resistente cada vez mais exposta.
+
+Os geólogos concordam que Devils Tower e uma intrusão ígnea, mas os detalhes exatos de como esse corpo de magma se formou ainda sao discutidos. A própria erosão apagou parte das evidências que poderiam resolver a historia completa.
+    `.trim(),
+    tema: 'geologia',
+    tags: ['devils-tower', 'rocha-ígnea', 'erosão', 'colunas', 'wyoming'],
+    influencias: [{ chave: 'exploracao', peso: 1 }],
+    fontes: [
+      {
+        titulo: 'National Park Service - How the Tower Formed',
+        url: 'https://www.nps.gov/deto/learn/nature/tower-formation.htm',
+      },
+      {
+        titulo: 'National Park Service - Geodiversity Atlas: Devils Tower',
+        url: 'https://www.nps.gov/articles/nps-geodiversity-atlas-devils-tower-national-monument-wyoming.htm',
+      },
+    ],
+    verificadoEm: '2026-10-01',
+  },
+
+  {
+    id: 'ra-de-madeira-congela-viva',
+    titulo: 'Existe uma rã que passa o inverno congelada e volta a viver na primavera',
+    preview:
+      'A rã-da-floresta pode sobreviver durante meses com grande parte do corpo congelada, sem respirar e sem o coração bater.',
+    conteudo: `
+A rã-da-floresta, conhecida em inglês como wood frog, vive em regiões da América do Norte onde os invernos podem ser extremamente frios. Em vez de fugir completamente do congelamento, ela desenvolveu uma estratégia que parece impossível: permite que boa parte do corpo congele.
+
+Durante o inverno, gelo pode se formar na cavidade abdominal e entre os tecidos. Seus olhos podem ficar esbranquiçados, a respiração para e o coração deixa de bater.
+
+Em muitos animais isso destruiria as células. A rã-da-floresta reduz o dano produzindo grandes quantidades de substâncias protetoras, especialmente glicose. Essa concentração ajuda a proteger o interior das células enquanto o gelo se forma principalmente fora delas.
+
+No norte do Alasca, esses animais podem permanecer congelados durante meses. Quando as temperaturas sobem, o gelo derrete, o coração volta a funcionar e a ra retoma sua atividade.
+
+Essa adaptação também permite que despertem cedo na primavera, quando muitos lagos ainda estão congelados, aproveitando pequenas poças temporarias para se reproduzir.
+    `.trim(),
+    tema: 'natureza',
+    tags: ['ra', 'anfibio', 'hibernacao', 'congelamento', 'adaptação'],
+    influencias: [{ chave: 'vegetacao', peso: 1 }],
+    fontes: [
+      {
+        titulo: 'National Park Service - Tiny Masters of Arctic Survival',
+        url: 'https://www.nps.gov/cakr/learn/nature/wood-frog.htm',
+      },
+      {
+        titulo: 'National Park Service - Biological Miracle',
+        url: 'https://www.nps.gov/gaar/learn/nature/wood-frog-page-2.htm',
+      },
+    ],
+    verificadoEm: '2026-10-01',
+  },
+
+  {
+    id: 'venus-dia-maior-que-ano',
+
+    titulo: 'Em Vênus, um dia dura mais do que um ano',
+
+    preview:
+      'Vênus gira tão devagar que leva 243 dias terrestres para completar uma rotação, mas apenas 225 para dar uma volta ao redor do Sol.',
+
+    conteudo: `
+Vênus é parecido com a Terra em tamanho, mas seu relógio funciona de um jeito completamente diferente.
+
+O planeta leva cerca de 225 dias terrestres para completar uma órbita ao redor do Sol. Esse é o seu ano.
+
+Já uma rotação completa em torno do próprio eixo leva aproximadamente 243 dias terrestres. Isso significa que, tecnicamente, um dia sideral em Vênus é mais longo do que um ano venusiano.
+
+A situação fica ainda mais estranha porque Vênus gira no sentido oposto ao da maioria dos planetas. Se fosse possível observar o céu a partir de sua superfície, o Sol pareceria nascer no oeste e se pôr no leste.
+
+Existe outra medida de “dia”: o intervalo entre um nascer do Sol e o seguinte. Por causa da combinação entre a rotação lenta e a órbita do planeta, esse dia solar dura cerca de 117 dias terrestres.
+
+Vênus mostra como palavras familiares como “dia” e “ano” podem representar escalas de tempo completamente diferentes em outros mundos.
+    `.trim(),
+
+    tema: 'astronomia',
+
+    tags: ['venus', 'rotacao', 'orbita', 'planetas', 'sistema-solar'],
+
+    influencias: [{ chave: 'observacao', peso: 1 }],
+
+    fontes: [
+      {
+        titulo: 'NASA Science — Venus: Facts',
+        url: 'https://science.nasa.gov/venus/venus-facts/',
+      },
+      {
+        titulo: 'NASA Space Place — All About Venus',
+        url: 'https://spaceplace.nasa.gov/all-about-venus/en/',
+      },
+    ],
+
+    verificadoEm: '2026-10-01',
+  },
+
+  {
+    id: 'enceladus-oceano-jatos-espaco',
+
+    titulo: 'Uma lua de Saturno joga água de seu oceano direto para o espaço',
+
+    preview:
+      'Sob a crosta congelada de Encélado existe um oceano global de água salgada, e parte dele escapa por enormes jatos no polo sul.',
+
+    conteudo: `
+Encélado é uma pequena lua gelada de Saturno com apenas cerca de 500 quilômetros de diâmetro. Apesar do tamanho, tornou-se um dos mundos mais interessantes do Sistema Solar.
+
+A missão Cassini revelou que sob sua crosta de gelo existe um oceano global de água salgada. Próximo ao polo sul, grandes fraturas na superfície — apelidadas de “listras de tigre” — permitem que material desse oceano escape para o espaço.
+
+Por essas rachaduras surgem jatos de vapor de água e partículas de gelo. A Cassini atravessou esse material e conseguiu analisar substâncias vindas diretamente do oceano subterrâneo.
+
+As medições encontraram sais, compostos orgânicos e até fósforo, um elemento essencial para muitos processos biológicos conhecidos na Terra. Há também evidências de atividade hidrotermal no fundo desse oceano.
+
+Isso não significa que vida tenha sido descoberta em Encélado. Significa que esse pequeno mundo reúne água líquida, química interessante e uma fonte de energia — condições que fazem dele um dos principais lugares para investigar ambientes potencialmente habitáveis fora da Terra.
+
+O detalhe extraordinário é que uma futura missão nem precisaria necessariamente perfurar quilômetros de gelo para começar a estudar esse oceano: Encélado já lança amostras dele para o espaço.
+    `.trim(),
+
+    tema: 'astronomia',
+
+    tags: ['encelado', 'saturno', 'oceano', 'cassini', 'astrobiologia'],
+
+    influencias: [{ chave: 'observacao', peso: 2 }],
+
+    fontes: [
+      {
+        titulo: 'NASA Science — Enceladus',
+        url: 'https://science.nasa.gov/saturn/moons/enceladus/',
+      },
+      {
+        titulo: 'NASA — Cassini Data Reveals Building Block for Life in Enceladus’ Ocean',
+        url: 'https://www.nasa.gov/missions/cassini/nasa-cassini-data-reveals-building-block-for-life-in-enceladus-ocean/',
+      },
+    ],
+
+    verificadoEm: '2026-10-01',
   },
 ];
 

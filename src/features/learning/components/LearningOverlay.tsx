@@ -34,6 +34,8 @@ type Props = {
    * rola até o topo. `learning` não sabe que foi a ActionBar.
    */
   voltarAoTopo?: number;
+  /** A ordem do feed nesta sessão (ids), decidida pela composição. Só passa adiante. */
+  ordem?: readonly string[];
 };
 
 /**
@@ -49,7 +51,7 @@ type Props = {
  * só `transform`: nada de layout durante o movimento.
  */
 export function LearningOverlay({
-  aberto, progresso, aprendizado, onFechar, onAprendido, onConfiguracoes, pulso, voltarAoTopo,
+  aberto, progresso, aprendizado, onFechar, onAprendido, onConfiguracoes, pulso, voltarAoTopo, ordem,
 }: Props) {
   const c = useColors();
   const tela = useWindowDimensions();
@@ -75,6 +77,7 @@ export function LearningOverlay({
         onConfiguracoes={onConfiguracoes}
         pulso={pulso}
         voltarAoTopo={voltarAoTopo}
+        ordem={ordem}
         visivel={aberto}
       />
     </Animated.View>

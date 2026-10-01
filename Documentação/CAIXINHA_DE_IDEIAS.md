@@ -125,6 +125,44 @@ A diversidade dos mundos é mais interessante que competição de quantidade.
 
 ## Crescimento, temas e identidade
 
+### A Era das Especializações (depois das 20)
+
+**Decisão de direção** (implementada como capacidade, sem nenhum prédio ainda):
+as primeiras 20 curiosidades constroem a base da civilização. Ao concluir essa
+fase, a **Era das Especializações** é desbloqueada — com uma conquista própria. A
+partir daí, afinidades temáticas poderão criar e evoluir ramos especializados
+da vila.
+
+**Primeiro ramo de teste: Astronomia, com dois tiers** (implementado; números
+provisórios para calibrar):
+
+```
+afinidade ≥ 5   tier 1  um pequeno telescópio / ponto de observação
+afinidade ≥ 10  tier 2  o MESMO prédio evolui para posto de observação
+```
+
+Regras que valem para todo ramo:
+- especializações só avançam **depois** da Era das Especializações — chegar a 20
+  não constrói nada; quem dispara é a próxima curiosidade do tema;
+- **um aprendizado avança no máximo um tier** (a sensação de progressão importa
+  mais que recuperar o atraso de uma vez);
+- **prédios especializados evoluem em vez de se multiplicarem**.
+
+**Geografia das especializações** (implementada):
+- especializações podem ter **preferência geográfica** própria;
+- **Astronomia prefere áreas próximas às montanhas** (aos pés delas, em céu
+  aberto) **e afastadas do núcleo residencial** — uma instalação à parte;
+- prédios especializados podem ter **rotas de acesso próprias**: a trilha
+  astronômica sai da rede da vila e se separa até o observatório;
+- **a trilha astronômica amadurece mais lentamente** que os caminhos cotidianos
+  da vila (é um lugar visitado com menos frequência) e nunca fica tão larga;
+- futuros ramos poderão definir **suas próprias preferências de terreno e
+  acesso** — mina perto de rocha e montanha; natureza perto de floresta, água ou
+  área fértil.
+
+Artes: `telescopy_tier1` (telescópio) e `telescopy_tier2` (posto de
+observação), em `sprites/especializacoes/`.
+
 ### Progressão acumulada da vila (nova direção)
 
 **Decisão de direção** (a implementação vive no `ARCHITECTURE.md`, em
@@ -240,6 +278,18 @@ muita natureza   → cidade integrada à paisagem
 muita história   → mais monumentos e estruturas culturais
 muita tecnologia → infraestrutura mais sofisticada
 ```
+
+### Seu conhecimento (implementada)
+
+A tela secundária do Mundo que responde "que tipo de conhecimento está moldando
+meu mundo?": o total de descobertas e, por tema, a afinidade e uma frase sobre o
+que esse conhecimento já fez no mapa. Ordem editorial fixa, sem barras nem
+limiares — a mudança das frases revela a identidade da jornada sem virar
+ranking. Quando um ramo novo entrar em `ESPECIALIZACOES`, a tela passa a
+refletir os tiers dele sozinha.
+
+Para depois: frases mais ricas quando houver combinações de temas (História +
+Astronomia…), e talvez tocar num tema para ver no mapa o que ele construiu.
 
 ### Civilizações diferentes para perfis diferentes
 

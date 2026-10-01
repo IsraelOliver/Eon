@@ -6,7 +6,7 @@ import type { RenderElement } from './renderElements';
  * Os require são estáticos de propósito: o Metro precisa vê-los para empacotar.
  *
  * Pastas em assets/images/world/sprites/: `arvores/`, `casas/`, `marcos/`,
- * `construcoes/` — e `old/`, onde fica todo sprite substituído (nada ali é
+ * `construcoes/`, `especializacoes/` — e `old/`, onde fica todo sprite substituído (nada ali é
  * carregado; o Metro só empacota o que tem require).
  *
  * O engine pensa em papéis (`arvore`, `casa`, `casa_maior`, `fonte`) + orientação
@@ -29,6 +29,10 @@ export const IMAGENS = {
   // Marcos da vila (engine/marcos.ts)
   cabana: require('../../../../assets/images/world/sprites/marcos/cabana.png'),
   fogueira: require('../../../../assets/images/world/sprites/marcos/fogueira.png'),
+
+  // Especializações (ESPECIALIZACOES em engine/marcos.ts): Astronomia, tier 1 e 2
+  telescopy_tier1: require('../../../../assets/images/world/sprites/especializacoes/telescopy_tier1.png'),
+  telescopy_tier2: require('../../../../assets/images/world/sprites/especializacoes/telescopy_tier2.png'),
 
   // Casa frontal: fallback para uma residência que chegue sem orientação/variante.
   // As vilas usam sempre as diagonais abaixo.
@@ -64,6 +68,9 @@ const ARTE_DO_PAPEL: Partial<Record<RenderElement['tipo'], readonly (readonly [I
     ['oak_tree_v2', 0.25],
     ['oak_tree_v3', 0.25],
   ],
+  // Astronomia: o telescópio (tier 1) e o posto de observação (tier 2)
+  telescopio: [['telescopy_tier1', 1]],
+  posto_de_observacao: [['telescopy_tier2', 1]],
 };
 
 /** A variante deste elemento, escolhida pela posição dele. */

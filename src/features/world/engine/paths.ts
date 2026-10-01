@@ -385,11 +385,20 @@ const PASSOS_8 = [
   [1, 1, Math.SQRT2], [1, -1, Math.SQRT2], [-1, 1, Math.SQRT2], [-1, -1, Math.SQRT2],
 ] as const;
 
-/** Pode pisar? Terra transitável, dentro do mapa e fora de construção. */
-function pisavel(mundo: World, x: number, y: number, bloqueados: Set<number>): boolean {
+/**
+ * Pode pisar? Terra transitável pelos `custos` (o que não tem custo é proibido),
+ * dentro do mapa, fora d'água e de construção.
+ */
+function pisavel(
+  mundo: World,
+  x: number,
+  y: number,
+  bloqueados: Set<number>,
+  custos: Partial<Record<TileType, number>> = CUSTO_TERRENO,
+): boolean {
   if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) return false;
   const i = chave(x, y);
-  return !mundo.agua[i] && !bloqueados.has(i) && CUSTO_TERRENO[mundo.tipo[i]] !== undefined;
+  return !mundo.agua[i] && !bloqueados.has(i) && custos[mundo.tipo[i]] !== undefined;
 }
 
 /**
@@ -398,6 +407,10 @@ function pisavel(mundo: World, x: number, y: number, bloqueados: Set<number>): b
  * curva o trajeto. Andar sobre a rede que já existe (`reuso`) é quase de graça,
  * então as trilhas se juntam em vez de correr lado a lado. Diagonal só sem
  * cortar quina de construção. Devolve da origem até o alvo, ou null.
+ *
+ * `terreno` diz por onde se pode passar e quanto custa (o padrão é o da vila);
+ * as rotas de acesso das especializações passam os seus — montanha proibida,
+ * floresta cara.
  */
 function trilha(
   mundo: World,
@@ -406,6 +419,7 @@ function trilha(
   reuso: Set<number>,
   bloqueados: Set<number>,
   area: { x0: number; y0: number; x1: number; y1: number },
+  terreno: Partial<Record<TileType, number>> = CUSTO_TERRENO,
 ): { x: number; y: number }[] | null {
   const largura = area.x1 - area.x0 + 1;
   const altura = area.y1 - area.y0 + 1;
@@ -417,7 +431,7 @@ function trilha(
   const custoDe = (x: number, y: number) =>
     reuso.has(chave(x, y))
       ? CUSTO_CAMINHO
-      : (CUSTO_TERRENO[mundo.tipo[chave(x, y)]] ?? 60) +
+      : (terreno[mundo.tipo[chave(x, y)]] ?? 60) +
         valueNoise(x / ESCALA_DA_ONDULACAO, y / ESCALA_DA_ONDULACAO, mundo.seed + 1709) * ONDULACAO;
 
   const inicio = indice(origem.x, origem.y);
@@ -437,9 +451,13 @@ function trilha(
       const nx = x + dx;
       const ny = y + dy;
       if (nx < area.x0 || ny < area.y0 || nx > area.x1 || ny > area.y1) continue;
-      if (!pisavel(mundo, nx, ny, bloqueados)) continue;
+      if (!pisavel(mundo, nx, ny, bloqueados, terreno)) continue;
       // diagonal sem cortar quina: os dois vizinhos retos têm de ser pisáveis
-      if (dx !== 0 && dy !== 0 && (!pisavel(mundo, x + dx, y, bloqueados) || !pisavel(mundo, x, y + dy, bloqueados))) {
+      if (
+        dx !== 0 &&
+        dy !== 0 &&
+        (!pisavel(mundo, x + dx, y, bloqueados, terreno) || !pisavel(mundo, x, y + dy, bloqueados, terreno))
+      ) {
         continue;
       }
       const novo = atual.custo + custoDe(nx, ny) * passo;
@@ -727,4 +745,83 @@ export function redeDaVila(
   }
 
   return [...rede.values()];
+}
+
+// =====================================================================
+// ROTAS DE ACESSO — a trilha própria de uma construção especializada.
+//
+// Da porta da construção até a rede da vila (ou, sem rede, até o núcleo). Para
+// no PRIMEIRO caminho que encontrar, então começa aproveitando a rede e só
+// depois se separa. Calculada UMA vez, quando a construção nasce (quem guarda é
+// `Settlement.acessos`); o estilo de cada estágio vem da especialização.
+// =====================================================================
+
+/** Margem (tiles) da caixa de busca em volta da construção e da vila. */
+const MARGEM_DO_ACESSO = 16;
+
+/**
+ * A linha central da rota de acesso, da porta até a vila. Tenta primeiro com
+ * os custos da especialização; se o relevo fechar todas as saídas, tenta com os
+ * da vila (que atravessam montanha caro) — o acesso não some. null só se nem
+ * assim houver caminho.
+ */
+export function rotaDeAcesso(
+  mundo: World,
+  vila: Settlement,
+  porta: { x: number; y: number },
+  ocupantes: readonly WorldOccupant[],
+  custos: Partial<Record<TileType, number>>,
+  curva: number,
+): { x: number; y: number }[] | null {
+  const bloqueados = tilesBloqueados(ocupantes);
+  bloqueados.delete(chave(porta.x, porta.y));
+  const naRede = tilesDeCaminho(vila.caminhos);
+  // sem rede ainda: o chão em volta do centro da vila é o destino
+  const alvo = new Set(naRede);
+  if (alvo.size === 0) {
+    for (let dy = -3; dy <= 3; dy++) {
+      for (let dx = -3; dx <= 3; dx++) {
+        if (Math.hypot(dx, dy) <= 3) alvo.add(chave(vila.x + dx, vila.y + dy));
+      }
+    }
+  }
+  const area = {
+    x0: Math.max(1, Math.min(porta.x, vila.x) - MARGEM_DO_ACESSO - Math.ceil(vila.raio)),
+    y0: Math.max(1, Math.min(porta.y, vila.y) - MARGEM_DO_ACESSO - Math.ceil(vila.raio)),
+    x1: Math.min(W - 2, Math.max(porta.x, vila.x) + MARGEM_DO_ACESSO + Math.ceil(vila.raio)),
+    y1: Math.min(H - 2, Math.max(porta.y, vila.y) + MARGEM_DO_ACESSO + Math.ceil(vila.raio)),
+  };
+  const rota =
+    trilha(mundo, porta, alvo, naRede, bloqueados, area, custos) ??
+    trilha(mundo, porta, alvo, naRede, bloqueados, area, CUSTO_TERRENO);
+  return rota ? ondular(mundo, rota, bloqueados, curva) : null;
+}
+
+/**
+ * Os tiles de uma rota de acesso já guardada, no traço do estágio atual. Não
+ * entra em construção (pode ter crescido) nem sobre a rede da vila — onde as
+ * duas se encontram, quem aparece é o caminho da vila.
+ */
+export function tilesDoAcesso(
+  mundo: World,
+  linha: readonly { x: number; y: number }[],
+  traco: { espessura: number; cobertura: number; opacidade: number },
+  ocupantes: readonly WorldOccupant[],
+  daVila: ReadonlySet<number>,
+): PathTile[] {
+  const bloqueados = tilesBloqueados(ocupantes);
+  const saida: PathTile[] = [];
+  for (const p of linha) {
+    const i = chave(p.x, p.y);
+    if (daVila.has(i) || bloqueados.has(i) || mundo.agua[i] || !tipoConstruivel(mundo.tipo[i])) continue;
+    saida.push({
+      x: p.x,
+      y: p.y,
+      tipo: 'acesso',
+      forca: traco.opacidade,
+      espessura: traco.espessura,
+      cobertura: traco.cobertura,
+    });
+  }
+  return saida;
 }

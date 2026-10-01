@@ -21,10 +21,13 @@ import type { AchievementId } from '../engine/regras';
 export interface DefinicaoDeConquista {
   titulo: string;
   descricao: string;
-  /** A arte a 64 pt: lista da coleção e banner. */
-  imagem: ImageSourcePropType;
-  /** A silhueta a 64 pt: o que a lista mostra enquanto a conquista está bloqueada. */
-  imagemBloqueada: ImageSourcePropType;
+  /**
+   * A arte a 64 pt: lista da coleção e banner. Opcional SÓ enquanto a arte não
+   * existe: sem ela, o espaço de 64×64 fica vazio (nunca uma arte emprestada).
+   */
+  imagem?: ImageSourcePropType;
+  /** A silhueta a 64 pt: o que a lista mostra enquanto a conquista está bloqueada. Idem. */
+  imagemBloqueada?: ImageSourcePropType;
 }
 
 export const CONQUISTAS: Record<AchievementId, DefinicaoDeConquista> = {
@@ -33,5 +36,13 @@ export const CONQUISTAS: Record<AchievementId, DefinicaoDeConquista> = {
     descricao: 'Seu mundo recebeu sua primeira construção.',
     imagem: require('../../../../assets/achievements/house-conquest.png'),
     imagemBloqueada: require('../../../../assets/achievements/house-conquest-bloqueada.png'),
+  },
+  'era-das-especializacoes': {
+    titulo: 'Era das Especializações',
+    descricao: 'Sua vila amadureceu o bastante para seguir novos caminhos.',
+    // ARTE PENDENTE: quando os arquivos existirem (gerar-sprite-conquista.ps1),
+    // descomente e aponte as duas linhas:
+    // imagem: require('../../../../assets/achievements/<nome>.png'),
+    // imagemBloqueada: require('../../../../assets/achievements/<nome>-bloqueada.png'),
   },
 };

@@ -13,6 +13,10 @@ export type SpriteKey =
   | 'cabana'
   /** Marco inicial: o lugar começa a virar núcleo (engine/marcos.ts). */
   | 'fogueira'
+  /** Especialização Astronomia, tier 1: o pequeno ponto de observação. */
+  | 'telescopio'
+  /** Especialização Astronomia, tier 2: o posto de observação (o telescópio evoluído). */
+  | 'posto_de_observacao'
   | 'observatorio'
   | 'mina'
   | 'arvore'
@@ -164,6 +168,9 @@ export type MarcoId =
   | 'trilhas-12'
   | 'trilhas-16'
   | 'trilhas-20'
+  // Especializações (Era das Especializações, ESPECIALIZACOES em marcos.ts)
+  | 'astronomia-tier-1'
+  | 'astronomia-tier-2'
   // Legado: sequência anterior do playtest. Não acontecem mais, mas podem
   // estar num save — continuam sendo lidos (LEGADO, em marcos.ts).
   | 'vila-casa-5'
@@ -211,6 +218,20 @@ export interface Settlement {
    * (efeito `caminhos`, engine/marcos.ts). Ausente = 0 (saves antigos).
    */
   nivelDosCaminhos?: NivelDosCaminhos;
+  /**
+   * As rotas de acesso próprias das construções especializadas (o observatório…),
+   * calculadas UMA vez, quando a construção nasce, e guardadas: evoluir não as
+   * recalcula, só as desenha um estágio mais firme. Ausente = nenhuma.
+   */
+  acessos?: AcessoDeConstrucao[];
+}
+
+/** A trilha própria de uma construção especializada: a linha central, em tiles. */
+export interface AcessoDeConstrucao {
+  /** A identidade da construção: o degrau que a criou (`marco.id`). */
+  construcao: MarcoId;
+  /** Da porta da construção até a rede da vila, em ordem. */
+  tiles: { x: number; y: number }[];
 }
 
 /** Maturidade da rede de caminhos da vila. 0 = nenhum caminho (acampamento). */
@@ -257,6 +278,12 @@ export interface WorldSnapshot {
 }
 
 /** Resultado de aplicar uma sequência de eventos de crescimento. */
+/** Um degrau que aconteceu, e a construção que ele criou ou evoluiu (caminhos: nenhuma). */
+export interface AcontecimentoDoMarco {
+  marco: MarcoId;
+  elemento?: GrowthElement;
+}
+
 export interface GrowthResult {
   /** Lista final: os que já existiam mais os novos. */
   elementos: GrowthElement[];
@@ -266,6 +293,12 @@ export interface GrowthResult {
   evoluidos: GrowthElement[];
   /** O que mudou sem ser construção (a rede de caminhos, por exemplo), já em frase. */
   avisos?: string[];
+  /**
+   * Os degraus da progressão que de fato ACONTECERAM nesta execução, na ordem
+   * do catálogo (os sem lugar ficam de fora). Só `aplicarMarcos` preenche. É
+   * daqui que sai a manchete do World Pulse (`manchetePrincipal`).
+   */
+  acontecimentos?: AcontecimentoDoMarco[];
   /** Eventos que não encontraram lugar, na ordem em que foram processados. */
   semLugar: WorldGrowthKind[];
   /** Assentamentos depois desta execução (lista nova; a recebida não muda). */

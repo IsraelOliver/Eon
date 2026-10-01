@@ -10,8 +10,12 @@ import {
   ORDEM_DAS_CONQUISTAS, proximaNaoVista, type AchievementId,
 } from '@/features/achievements/engine/regras';
 import { useAchievements } from '@/features/achievements/hooks/useAchievements';
+import { KnowledgeButton } from '@/features/knowledge/components/KnowledgeButton';
+import { KnowledgeScreen } from '@/features/knowledge/components/KnowledgeScreen';
+import { obterResumoDoConhecimento } from '@/features/knowledge/presentation/resumoDoConhecimento';
 import { LearningOverlay } from '@/features/learning/components/LearningOverlay';
-import type { LearningResult } from '@/features/learning/engine/types';
+import { NOMES_DE_TEMA } from '@/features/learning/engine/themes';
+import type { LearningResult, ThemeKey } from '@/features/learning/engine/types';
 import {
   escolherWorldPulse, marcarNoticiaVista, proximaNoticia,
   type NoticiaDoMundo, type WorldPulseItem,
@@ -28,12 +32,15 @@ import { BuildingCallout } from '@/features/world/components/BuildingCallout';
 import { GrowthBanner } from '@/features/world/components/GrowthBanner';
 import { WorldDevTools } from '@/features/world/components/WorldDevTools';
 import { WorldMap } from '@/features/world/components/WorldMap';
-import { assuntoDeCrescimento, fraseDeCrescimento } from '@/features/world/engine/destaque';
+import { assuntoDeCrescimento } from '@/features/world/engine/destaque';
+import { estadoDosRamos } from '@/features/world/engine/estadoDosRamos';
 import {
-  definicaoDoMarco, etapasDaJornada, historiaDoElemento, quemJaAconteceu,
+  especializacoesDesbloqueadas, etapasDaJornada, historiaDoElemento, quemJaAconteceu,
+  tiersPendentes,
 } from '@/features/world/engine/marcos';
 import { assentamentoAlvo, estagioDaVila } from '@/features/world/engine/settlements';
 import { paraDescobrir } from '@/features/learning/presentation/descoberta';
+import { aplicarOrdem, ordemDaSessao } from '@/features/learning/presentation/ordemDoFeed';
 import { noticiaAmbiental } from '@/features/world/engine/pulsoAmbiental';
 import { NOME_DA_CONSTRUCAO } from '@/features/world/engine/selecao';
 import type { GrowthElement } from '@/features/world/engine/types';
@@ -73,9 +80,33 @@ const DIA_MS = 24 * 60 * 60 * 1000;
  * quadro já nasce no tema escolhido — sem piscar claro para quem escolheu
  * escuro.
  */
+/**
+ * Qual curiosidade o simulador da jornada aprende: a primeira do feed, com um
+ * cuidado para as especializações acontecerem — cada tier pede uma curiosidade
+ * do tema aprendida DEPOIS da fase base. Antes da era, guarda uma do tema por
+ * tier pendente; depois dela, aprende primeiro as dos temas que ainda têm tier.
+ */
+function escolhaDoSimulador<C extends { tema: ThemeKey }>(
+  fila: readonly C[],
+  eraAberta: boolean,
+  pendentes: Partial<Record<ThemeKey, number>>,
+): C | undefined {
+  if (eraAberta) return fila.find((c) => (pendentes[c.tema] ?? 0) > 0) ?? fila[0];
+  const restantes: Partial<Record<ThemeKey, number>> = {};
+  for (const c of fila) restantes[c.tema] = (restantes[c.tema] ?? 0) + 1;
+  return fila.find((c) => (restantes[c.tema] ?? 0) > (pendentes[c.tema] ?? 0)) ?? fila[0];
+}
+
+/** Esta abertura do app, para o Discovery: o número dela e quem abriu a anterior. */
+interface SessaoDoApp {
+  numero: number;
+  ultimaInicial: string | null;
+}
+
 export default function AppScreen() {
   const c = useColors();
   const [save, setSave] = useState<SaveData | null | undefined>(undefined);
+  const [sessao, setSessao] = useState<SessaoDoApp>({ numero: 0, ultimaInicial: null });
 
   useEffect(() => {
     let vivo = true;
@@ -83,6 +114,11 @@ export default function AppScreen() {
       .then(([lido, preferencias]) => {
         if (!vivo) return;
         definirAparencia(preferencias.aparencia);
+        // Uma abertura REAL do app: o contador sobe uma vez, aqui, e é gravado
+        // já — a ordem do Discovery desta sessão sai dele.
+        const numero = preferencias.discoveryLaunchSequence + 1;
+        void salvarPreferencias({ discoveryLaunchSequence: numero });
+        setSessao({ numero, ultimaInicial: preferencias.ultimaCuriosidadeInicialId });
         setSave(lido);
       })
       // Nenhum dos dois lança, mas a splash nunca pode ficar presa na tela.
@@ -107,7 +143,7 @@ export default function AppScreen() {
     );
   }
 
-  return <Jogo save={save} />;
+  return <Jogo save={save} sessao={sessao} />;
 }
 
 /**
@@ -117,7 +153,7 @@ export default function AppScreen() {
  * Só é montado depois que o save foi resolvido, então `useWorld` e `useLearning`
  * já nascem com o estado certo — e o autosave nunca roda antes da hidratação.
  */
-function Jogo({ save }: { save: SaveData | null }) {
+function Jogo({ save, sessao }: { save: SaveData | null; sessao: SessaoDoApp }) {
   const c = useColors();
   const [configAberto, setConfigAberto] = useState(false);
   /**
@@ -140,6 +176,28 @@ function Jogo({ save }: { save: SaveData | null }) {
   const aprendizado = useLearning(save?.learning.perfil);
   /** Nasce só com o que está desbloqueado — a fila do banner começa vazia. */
   const conquistas = useAchievements(save?.achievements.desbloqueadas);
+  /**
+   * A ordem do Discovery NESTA sessão do app: decidida uma vez, quando o Jogo
+   * monta (o app abriu de verdade), e fixa até fechar — navegar, abrir
+   * Configurações ou remontar a tela não a recalcula. Cobre o catálogo
+   * inteiro; as aprendidas continuam saindo pelo perfil. A semente é a da
+   * jornada + o número da abertura.
+   */
+  const [ordemDoFeed] = useState(() =>
+    ordemDaSessao(aprendizado.curiosidades, {
+      semente: world.seed,
+      sessao: sessao.numero,
+      aprendidas: aprendizado.perfil.aprendidas,
+      evitarPrimeira: sessao.ultimaInicial,
+    }),
+  );
+  // quem abre esta sessão: a próxima abertura não repete (se houver outra)
+  useEffect(() => {
+    const primeira = paraDescobrir(aplicarOrdem(aprendizado.curiosidades, ordemDoFeed), aprendizado.perfil)[0];
+    if (primeira) void salvarPreferencias({ ultimaCuriosidadeInicialId: primeira.id });
+    // só na montagem: é a primeira desta sessão, não a de agora
+  }, [ordemDoFeed]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Sem save, a jornada é nova: as boas-vindas ao Mundo ainda não foram vistas. */
   const [onboardingConcluida, setOnboardingConcluida] = useState(save?.onboardingConcluida ?? false);
   const dev = useDevMode();
@@ -160,6 +218,15 @@ function Jogo({ save }: { save: SaveData | null }) {
   const [conquistasAbertas, setConquistasAbertas] = useState(false);
   const abrirConquistas = useCallback(() => setConquistasAbertas(true), []);
   const fecharConquistas = useCallback(() => setConquistasAbertas(false), []);
+  /**
+   * "Seu conhecimento": tela secundária do Mundo, por cima do mapa (que não sai
+   * da árvore). Quando ela termina de sumir, o mapa reenvia a cena ao Skia — o
+   * mesmo despertar da volta do Discovery.
+   */
+  const [conhecimentoAberto, setConhecimentoAberto] = useState(false);
+  const abrirConhecimento = useCallback(() => setConhecimentoAberto(true), []);
+  const fecharConhecimento = useCallback(() => setConhecimentoAberto(false), []);
+  const aoFecharConhecimento = useCallback(() => setDespertarMapa((n) => n + 1), []);
 
   /**
    * A aparência: preferência do APP, gravada em `@eon/preferences` — longe do
@@ -203,7 +270,23 @@ function Jogo({ save }: { save: SaveData | null }) {
    */
   const aoAprender = (resultado: LearningResult) => {
     if (resultado.status !== 'aprendida') return;
-    world.avancarProgressao({ aprendidas: resultado.perfil.aprendidas });
+    // A afinidade é o `porTema` do perfil (fonte de verdade). As listas por tema
+    // são a MEMÓRIA das especializações (quem contribuiu), derivadas do perfil +
+    // catálogo — nada novo é salvo.
+    const aprendidasPorTema: Partial<Record<ThemeKey, string[]>> = {};
+    for (const id of resultado.perfil.aprendidas) {
+      const tema = porId.get(id)?.tema;
+      if (tema) (aprendidasPorTema[tema] ??= []).push(id);
+    }
+    const progresso = {
+      aprendidas: resultado.perfil.aprendidas,
+      porTema: resultado.perfil.porTema,
+      aprendidasPorTema,
+    };
+    world.avancarProgressao(progresso);
+    // Fim da fase base (20): a Era das Especializações começa. Não constrói
+    // nada — é um fato da jornada; a conquista sai uma vez só (repetir não faz nada).
+    if (especializacoesDesbloqueadas(progresso)) conquistas.registrarFatos({ especializacoesDesbloqueadas: true });
   };
 
   /**
@@ -224,105 +307,52 @@ function Jogo({ save }: { save: SaveData | null }) {
    * recebe texto pronto e nunca fica sabendo que existe um mundo.
    */
   const [noticias, setNoticias] = useState<readonly NoticiaDoMundo[]>([]);
-  /** Quantas construções já viraram notícia. Começa no que veio do save. */
-  const jaNoticiadas = useRef(world.construcoes.length);
   const proximoIdDeNoticia = useRef(1);
 
-  useEffect(() => {
-    const total = world.construcoes.length;
-    if (total === jaNoticiadas.current) return;
-
-    // Encolheu: mundo novo ou jornada recomeçada. A conversa anterior acabou.
-    if (total < jaNoticiadas.current) {
-      jaNoticiadas.current = total;
-      setNoticias([]);
-      return;
-    }
-
-    const nascidos = world.construcoes.slice(jaNoticiadas.current);
-    jaNoticiadas.current = total;
-
-    /*
-     * Só o que o CONHECIMENTO causou vira notícia. O crescimento do modo dev
-     * chega sem `origemConhecimentoId` — e assim cem casas criadas em teste não
-     * entopem a fila de quem está jogando. A regra é estrutural, não uma flag.
-     */
-    const doJogador = nascidos.filter((e) => e.origemConhecimentoId !== undefined);
-    if (doJogador.length === 0) return;
-
-    const agora = Date.now();
-
-    /*
-     * O PRIMEIRO crescimento da jornada (a primeira curiosidade, antes da
-     * primeira visita ao Mundo) vira uma notícia só, especial. Se o Discovery
-     * está aberto — a pessoa acabou de aprender, a leitura cobre o feed —, o
-     * Pulse troca para ela já: é por ela que a pessoa descobre que o mundo mudou.
-     */
-    if (aprendizado.perfil.aprendidas.length === 1 && !onboardingConcluida) {
-      const especial = {
-        id: proximoIdDeNoticia.current++,
-        texto: FRASE_DO_PRIMEIRO_CRESCIMENTO,
-        assunto: assuntoDeCrescimento(doJogador[0]),
-        criadoEm: agora,
-        vista: aprenderAberto,
-      };
-      if (aprenderAberto) {
-        setPulso({
-          tipo: 'noticia',
-          categoria: 'progressao',
-          texto: especial.texto,
-          icone: especial.assunto,
-          quando: 'agora',
-        });
-      }
-      setNoticias((atuais) => [...atuais, especial].slice(-LIMITE_DE_NOTICIAS));
-      return;
-    }
-
-    const novas = doJogador.map((elemento) => ({
-      id: proximoIdDeNoticia.current++,
-      texto: fraseDeCrescimento(elemento),
-      assunto: assuntoDeCrescimento(elemento),
-      criadoEm: agora,
-      vista: false,
-    }));
-
-    // Fila cronológica: a mais antiga na frente é a próxima a ser contada.
-    setNoticias((atuais) => [...atuais, ...novas].slice(-LIMITE_DE_NOTICIAS));
-  }, [world.construcoes, aprendizado.perfil.aprendidas.length, onboardingConcluida, aprenderAberto]);
-
-  /**
-   * Evoluções também são notícia: "A primeira cabana cresceu e virou uma casa."
-   * Uma construção que evolui não muda a quantidade de construções, então o
-   * efeito acima não a vê — este acompanha os ids das evoluções. As que vieram
-   * do save já aconteceram há tempo: nascem "noticiadas".
+  /*
+   * A manchete de cada aprendizado que mudou o mundo — UMA, já escolhida pelo
+   * mundo (`manchetePrincipal`) a partir do que de fato aconteceu (os degraus
+   * de `aplicarMarcos`), nunca comparando o mapa depois. Aprendizado que só
+   * somou afinidade não produz manchete: o Pulse fica como está.
+   *
+   * Com o Discovery aberto — a pessoa acabou de aprender, a leitura cobre o
+   * feed —, o Pulse troca na hora: ao voltar ao feed, a manchete já está lá. Ela
+   * entra na fila já vista, para não se repetir na próxima entrada. Com o
+   * Discovery fechado (o simulador do modo dev aprende com o mundo à vista), ela
+   * espera na fila e sai na próxima entrada, como sempre.
+   *
+   * O PRIMEIRO crescimento da jornada (antes da primeira visita ao Mundo) fala
+   * pela frase especial: é por ela que a pessoa descobre que o mundo existe.
    */
-  const evolucoesNoticiadas = useRef<Set<string>>(
-    new Set(world.construcoes.flatMap((e) => (e.evolucoes ?? []).map((ev) => ev.marco))),
-  );
+  const { manchete, consumirManchete } = world;
   useEffect(() => {
-    const presentes = new Set<string>();
-    const novas: NoticiaDoMundo[] = [];
-    const agora = Date.now();
-    for (const elemento of world.construcoes) {
-      for (const evolucao of elemento.evolucoes ?? []) {
-        presentes.add(evolucao.marco);
-        if (evolucoesNoticiadas.current.has(evolucao.marco)) continue;
-        evolucoesNoticiadas.current.add(evolucao.marco);
-        novas.push({
-          id: proximoIdDeNoticia.current++,
-          // a frase DESTA evolução (a mesma construção pode ter subido duas vezes)
-          texto: definicaoDoMarco(evolucao.marco)?.frase ?? fraseDeCrescimento(elemento),
-          assunto: assuntoDeCrescimento(elemento),
-          criadoEm: agora,
-          vista: false,
-        });
-      }
+    if (!manchete) return;
+    consumirManchete();
+    const primeiro = aprendizado.perfil.aprendidas.length === 1 && !onboardingConcluida;
+    const noticia: NoticiaDoMundo = {
+      id: proximoIdDeNoticia.current++,
+      texto: primeiro ? FRASE_DO_PRIMEIRO_CRESCIMENTO : manchete.texto,
+      assunto: manchete.assunto,
+      criadoEm: Date.now(),
+      vista: aprenderAberto,
+    };
+    if (aprenderAberto) {
+      setPulso({
+        tipo: 'noticia',
+        categoria: 'progressao',
+        texto: noticia.texto,
+        icone: noticia.assunto,
+        quando: 'agora',
+      });
     }
-    // jornada recomeçada: as evoluções antigas sumiram junto com o mundo
-    if (presentes.size < evolucoesNoticiadas.current.size) evolucoesNoticiadas.current = presentes;
-    if (novas.length > 0) setNoticias((atuais) => [...atuais, ...novas].slice(-LIMITE_DE_NOTICIAS));
-  }, [world.construcoes]);
+    // Fila cronológica: a mais antiga na frente é a próxima a ser contada.
+    setNoticias((atuais) => [...atuais, noticia].slice(-LIMITE_DE_NOTICIAS));
+  }, [manchete, consumirManchete, aprenderAberto, aprendizado.perfil.aprendidas.length, onboardingConcluida]);
+
+  // Mundo recriado (mundo novo ou jornada recomeçada): a conversa anterior acabou.
+  useEffect(() => {
+    if (world.gerando) setNoticias([]);
+  }, [world.gerando]);
 
   /**
    * A ponte mundo → conquistas.
@@ -340,12 +370,12 @@ function Jogo({ save }: { save: SaveData | null }) {
    * duas vezes. `null` é terminal: o efeito re-roda uma vez e para.
    */
   const { nascimento, consumirNascimento } = world;
-  const { registrarNascimentos, reiniciar: reiniciarConquistas } = conquistas;
+  const { registrarFatos, reiniciar: reiniciarConquistas } = conquistas;
   useEffect(() => {
     if (!nascimento) return;
-    registrarNascimentos(nascimento.map(assuntoDeCrescimento));
+    registrarFatos({ nascidos: nascimento.map(assuntoDeCrescimento) });
     consumirNascimento();
-  }, [nascimento, registrarNascimentos, consumirNascimento]);
+  }, [nascimento, registrarFatos, consumirNascimento]);
 
   /**
    * Mundo sendo recriado = conquistas do mundo anterior saem junto.
@@ -532,8 +562,8 @@ function Jogo({ save }: { save: SaveData | null }) {
 
   /** Fecha a etiqueta sempre que o mapa deixa de ser o assunto. */
   useEffect(() => {
-    if (aprenderAberto || configAberto || conquistasAbertas || world.gerando) setSelecao(null);
-  }, [aprenderAberto, configAberto, conquistasAbertas, world.gerando]);
+    if (aprenderAberto || configAberto || conquistasAbertas || conhecimentoAberto || world.gerando) setSelecao(null);
+  }, [aprenderAberto, configAberto, conquistasAbertas, conhecimentoAberto, world.gerando]);
 
   /**
    * Recomeçar: apaga conhecimento e mundo **juntos**. As duas mudanças saem no
@@ -552,14 +582,20 @@ function Jogo({ save }: { save: SaveData | null }) {
    * botão APRENDI faz no Discovery — `aprendizado.aprender` e, se foi
    * 'aprendida', o mesmo `aoAprender` — e daí em diante é a progressão de
    * sempre: criação, evolução, caminhos, câmera, banner, notícias, World Pulse.
-   * A curiosidade é a primeira ainda não aprendida na ordem do catálogo (a do
-   * feed): determinística, sem sorteio.
+   * A curiosidade segue a ordem do feed desta sessão (determinística, sem
+   * sorteio), guardando as do tema de cada especialização para depois da fase
+   * base (`escolhaDoSimulador`). A jornada vai até a última curiosidade do
+   * catálogo: depois dos marcos da vila vêm as especializações.
    */
   const etapas = useMemo(() => etapasDaJornada(), []);
-  const limiteDaJornada = etapas[etapas.length - 1]?.quantidade ?? 0;
+  const limiteDaJornada = aprendizado.curiosidades.length;
   const aprendidasAgora = aprendizado.perfil.aprendidas.length;
   const aprenderProxima = () => {
-    const curiosidade = paraDescobrir(aprendizado.curiosidades, aprendizado.perfil)[0];
+    const curiosidade = escolhaDoSimulador(
+      paraDescobrir(aplicarOrdem(aprendizado.curiosidades, ordemDoFeed), aprendizado.perfil),
+      especializacoesDesbloqueadas({ aprendidas: aprendizado.perfil.aprendidas }),
+      tiersPendentes(world.construcoes),
+    );
     if (!curiosidade) return false;
     const resultado = aprendizado.aprender(curiosidade);
     if (resultado.status === 'aprendida') aoAprender(resultado);
@@ -608,6 +644,21 @@ function Jogo({ save }: { save: SaveData | null }) {
       recomecarJornada();
     },
   };
+
+  /*
+   * "Seu conhecimento" só LÊ: o perfil do aprendizado (total e afinidade de cada
+   * tema) e o estado dos ramos do mundo. Nada dele é salvo — reiniciar a jornada
+   * ou reabrir o app dá o mesmo resumo, porque as duas fontes já estão no save.
+   */
+  const resumoDoConhecimento = obterResumoDoConhecimento({
+    descobertas: aprendizado.perfil.aprendidas.length,
+    afinidade: aprendizado.perfil.porTema,
+    nomeDoTema: NOMES_DE_TEMA,
+    ramos: estadoDosRamos(world.construcoes, {
+      aprendidas: aprendizado.perfil.aprendidas,
+      porTema: aprendizado.perfil.porTema,
+    }),
+  });
 
   /*
    * A regra da barra: tocar num destino DIFERENTE navega; tocar no destino já
@@ -731,6 +782,8 @@ function Jogo({ save }: { save: SaveData | null }) {
             {...origemParaOBalao(selecao.elemento)}
           />
         )}
+        {/* O acesso a "Seu conhecimento": no topo do Mundo, nunca na ActionBar. */}
+        {!world.gerando && <KnowledgeButton onPress={abrirConhecimento} />}
         {/* O que acabou de nascer, quando o jogador volta ao mundo. */}
         <GrowthBanner titulo={novidade.titulo} subtitulo={novidade.subtitulo} id={novidade.id} />
         {/* Avisos por último: ficam acima das janelas */}
@@ -747,6 +800,7 @@ function Jogo({ save }: { save: SaveData | null }) {
         onConfiguracoes={abrirConfiguracoes}
         pulso={pulso}
         voltarAoTopo={voltarAoTopo}
+        ordem={ordemDoFeed}
       />
       <SettingsMenu
         aberto={configAberto}
@@ -776,8 +830,9 @@ function Jogo({ save }: { save: SaveData | null }) {
         }
       />
       {/* Modo dev, com o mundo à vista: o simulador na mão, para assistir e pausar. */}
-      {dev.ativo && !aprenderAberto && !configAberto && !conquistasAbertas && (
-        <SimulacaoFlutuante simulador={simulador} topo={insetsDoTopo + 8} />
+      {dev.ativo && !aprenderAberto && !configAberto && !conquistasAbertas && !conhecimentoAberto && (
+        // abaixo do acesso a "Seu conhecimento", que ocupa o topo do Mundo
+        <SimulacaoFlutuante simulador={simulador} topo={insetsDoTopo + 52} />
       )}
       {/* A barra vale para o app inteiro: fica acima do mundo e do aparelho. */}
       <ActionBar
@@ -790,6 +845,14 @@ function Jogo({ save }: { save: SaveData | null }) {
       {/* A coleção é tela cheia e cobre a barra e as Configurações (de onde é
           aberta): o "voltar" dela fecha só ela e devolve a pessoa para lá. */}
       <AchievementsScreen aberta={conquistasAbertas} colecao={colecao} onFechar={fecharConquistas} />
+
+      {/* "Seu conhecimento" cobre o Mundo e a barra; o voltar devolve ao Mundo. */}
+      <KnowledgeScreen
+        aberta={conhecimentoAberto}
+        resumo={resumoDoConhecimento}
+        onFechar={fecharConhecimento}
+        onFechado={aoFecharConhecimento}
+      />
 
       {/* Por último: enquanto está aberta, é a única coisa que aceita toque. */}
       {mostrarIntro && <JourneyIntro onContinuar={() => setOnboardingConcluida(true)} />}

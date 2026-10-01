@@ -5,8 +5,7 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useColors } from '@/shared/theme/colors';
-
-import { TopoDaTela } from './TopoDaTela';
+import { TopoDaTela } from '@/shared/ui/TopoDaTela';
 
 const FADE_MS = 200;
 

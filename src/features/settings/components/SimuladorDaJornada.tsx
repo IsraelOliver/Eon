@@ -33,7 +33,8 @@ export interface Simulador {
 const MARCA: Record<EtapaDoSimulador['estado'], string> = { feito: '✓', pendente: '…', futuro: '○' };
 
 /**
- * SIMULAÇÃO DA JORNADA (modo dev): testar a progressão real de 0 a 20 sem ler
+ * SIMULAÇÃO DA JORNADA (modo dev): testar a progressão real, da primeira à
+ * última curiosidade do catálogo, sem ler
  * curiosidade por curiosidade. Não cria nada: cada passo é um aprendizado real,
  * pelo mesmo caminho do botão APRENDI.
  */
@@ -57,7 +58,7 @@ export function SimuladorDaJornada({ simulador: s }: { simulador: Simulador }) {
         <Text style={[styles.linha, { color: c.muted }]}>
           {s.proximo
             ? `Próximo marco: ${s.proximo.quantidade} descobertas → ${s.proximo.rotulo}`
-            : 'Todos os marcos do catálogo já foram alcançados.'}
+            : 'Fase base concluída. Agora, as especializações (pela afinidade de cada tema).'}
         </Text>
         {acabou && <Text style={[styles.linha, { color: c.muted }]}>Não sobrou curiosidade para aprender.</Text>}
       </View>

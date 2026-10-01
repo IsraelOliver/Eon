@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { useColors } from '@/shared/theme/colors';
@@ -8,6 +8,7 @@ import type { Aprendizado } from '../hooks/useLearning';
 import type { Curiosity, CuriosityId, LearningResult } from '../engine/types';
 import type { WorldPulseItem } from '../presentation/worldPulse';
 import { paraDescobrir } from '../presentation/descoberta';
+import { aplicarOrdem } from '../presentation/ordemDoFeed';
 import { CuriosityReader } from './CuriosityReader';
 import { DiscoveryFeed } from './DiscoveryFeed';
 import { LearningHeader } from './header/LearningHeader';
@@ -33,6 +34,11 @@ type Props = {
   /** Muda de valor para o feed rolar até o topo. Só passa adiante. */
   voltarAoTopo?: number;
   /**
+   * A ordem do feed nesta sessão do app (ids; presentation/ordemDoFeed.ts).
+   * Sem ela, vale a ordem do catálogo.
+   */
+  ordem?: readonly string[];
+  /**
    * O aparelho está aberto e a tela à vista. A tela fica montada mesmo fechada,
    * então é isto que diz se ela pode mandar na barra de status.
    */
@@ -48,7 +54,7 @@ type Props = {
  */
 export function LearningScreen({
   aprendizado, onAprendido, onVerMundo, pulso = null, onConfiguracoes, voltarAoTopo,
-  visivel = false,
+  visivel = false, ordem,
 }: Props) {
   const c = useColors();
   const [abertaId, setAbertaId] = useState<CuriosityId | null>(null);
@@ -67,13 +73,16 @@ export function LearningScreen({
    * para o lugar da que acabou de sair. Assim a lista só se atualiza quando a
    * pessoa volta para o feed, que é exatamente quando isso não incomoda.
    */
-  const [visiveis, setVisiveis] = useState(() =>
-    paraDescobrir(aprendizado.curiosidades, aprendizado.perfil),
+  // o catálogo na ordem da sessão; quem tira as aprendidas é o perfil (paraDescobrir)
+  const ordenadas = useMemo(
+    () => (ordem ? aplicarOrdem(aprendizado.curiosidades, ordem) : aprendizado.curiosidades),
+    [aprendizado.curiosidades, ordem],
   );
+  const [visiveis, setVisiveis] = useState(() => paraDescobrir(ordenadas, aprendizado.perfil));
   useEffect(() => {
     if (abertaId !== null) return;
-    setVisiveis(paraDescobrir(aprendizado.curiosidades, aprendizado.perfil));
-  }, [abertaId, aprendizado.curiosidades, aprendizado.perfil]);
+    setVisiveis(paraDescobrir(ordenadas, aprendizado.perfil));
+  }, [abertaId, ordenadas, aprendizado.perfil]);
 
   // O engine registra; aqui só avisamos quem ligou, e só quando houve progresso.
   const aprender = (curiosidade: Curiosity): LearningResult => {

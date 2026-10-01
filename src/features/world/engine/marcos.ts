@@ -17,9 +17,10 @@
 // crescer é growthPlacement; quem muda o mapa é growthElements. Puro: sem
 // React, sem sorteio, sem relógio.
 // =====================================================================
+import type { ThemeKey } from '../../../shared/domain/themeKey';
 import { assentamentoAlvo } from './settlements';
 import type {
-  EvolucaoDaConstrucao, GrowthElement, MarcoId, NivelDosCaminhos, OrigemDoMarco, Settlement, SpriteKey,
+  EvolucaoDaConstrucao, GrowthElement, MarcoId, NivelDosCaminhos, OrigemDoMarco, Settlement, SpriteKey, TileType,
 } from './types';
 
 /**
@@ -45,7 +46,14 @@ export type CategoriaDeCrescimento = 'comum' | 'marco-inicial' | 'marco-tematico
  *   | { tipo: 'depoisDe'; marco: MarcoId }
  * (Esses vão pedir mais do que a lista de ids em `ProgressoDaJornada`.)
  */
-export type CondicaoDeMarco = { tipo: 'totalAprendido'; quantidade: number };
+export type CondicaoDeMarco =
+  | { tipo: 'totalAprendido'; quantidade: number }
+  /**
+   * Uma especialização (ESPECIALIZACOES, abaixo): a afinidade do `tema` chegou a
+   * `afinidade`, a Era das Especializações já estava aberta ANTES deste
+   * aprendizado, e a curiosidade que acabou de ser aprendida é do tema.
+   */
+  | { tipo: 'especializacao'; tema: ThemeKey; afinidade: number };
 
 /**
  * Onde uma construção NOVA nasce.
@@ -54,8 +62,67 @@ export type CondicaoDeMarco = { tipo: 'totalAprendido'; quantidade: number };
  * - `centroDaVila`: o mais perto possível do coração da vila existente.
  * - `anelDasCasas` / `anelDasMaiores`: a colocação de sempre das casas pequenas
  *   e das casas maiores na vila (anéis, footprint, colisão, orientação).
+ * - `periferiaDaVila`: um anel além das casas, fora do centro.
+ * - `especializado`: onde a `geografia` do efeito mandar (preferência
+ *   geográfica própria, com fallback até a periferia) — as especializações.
  */
-export type LugarDoMarco = 'fundaVila' | 'centroDaVila' | 'anelDasCasas' | 'anelDasMaiores';
+export type LugarDoMarco =
+  | 'fundaVila'
+  | 'centroDaVila'
+  | 'anelDasCasas'
+  | 'anelDasMaiores'
+  | 'periferiaDaVila'
+  | 'especializado';
+
+/**
+ * Custo de atravessar cada terreno numa trilha. Ausente = proibido (a água é
+ * sempre proibida, e construção também). Andar sobre caminho existente é
+ * sempre quase de graça: é o que faz uma trilha nova aproveitar a rede.
+ */
+export type CustosDeTerreno = Partial<Record<TileType, number>>;
+
+/**
+ * Onde uma construção especializada prefere nascer. É NOTA, não regra: o lugar
+ * ainda tem de ser terreno firme, fora d'água, da praça, da rua e das outras
+ * construções. Distâncias em TILES, contadas do centro da vila.
+ */
+export interface PreferenciaGeografica {
+  /** Abaixo de `minima`, recusado (nada de amontoar com as casas); além de `maxima`, a nota cai. */
+  distanciaDaVila: { minima: number; maxima: number };
+  /**
+   * Gostar de estar perto de montanha — aos PÉS dela, nunca em cima (montanha
+   * não é terreno firme). `ideal` e `tolerancia` em tiles até a montanha.
+   */
+  perto?: { montanha?: { ideal: number; tolerancia: number; peso: number } };
+  /** Nota por tipo de terreno: mais alta onde é aberto (planície), mais baixa onde é fechado. */
+  terreno: Partial<Record<TileType, number>>;
+}
+
+/** Como um trecho de trilha é desenhado (os mesmos campos de `PathTile`). */
+export interface TracoDaTrilha {
+  espessura: number;
+  cobertura: number;
+  opacidade: number;
+}
+
+/** A trilha própria de uma construção especializada, da porta até a vila. */
+export interface RotaDeAcesso {
+  /** Por onde a trilha pode passar, e quanto custa. */
+  custos: CustosDeTerreno;
+  /** Quanto o traçado ondula, em tiles (mais = mais irregular). */
+  curva: number;
+  /**
+   * O traço em cada estágio da construção: [criação, 1ª evolução, …]. Amadurece
+   * devagar, e nunca chega à largura dos caminhos da vila.
+   */
+  estagios: readonly TracoDaTrilha[];
+}
+
+/** O que uma especialização declara sobre o mundo: onde nasce e como se chega lá. */
+export interface GeografiaDaEspecializacao {
+  preferencia: PreferenciaGeografica;
+  acesso: RotaDeAcesso;
+}
 
 /**
  * Qual construção existente uma evolução pega. Sempre determinístico: nada de
@@ -79,7 +146,7 @@ export type AlvoDaEvolucao = { tipo: 'criadaPor'; marco: MarcoId } | { tipo: 'ma
  *   cada nível desenha é de `NIVEIS_DA_REDE`, em paths.ts.
  */
 export type EfeitoDoMarco =
-  | { tipo: 'criar'; sprite: SpriteKey; lugar: LugarDoMarco }
+  | { tipo: 'criar'; sprite: SpriteKey; lugar: LugarDoMarco; geografia?: GeografiaDaEspecializacao }
   | { tipo: 'evoluir'; de: SpriteKey; para: SpriteKey; alvo: AlvoDaEvolucao }
   | { tipo: 'caminhos'; nivel: Exclude<NivelDosCaminhos, 0> };
 
@@ -266,7 +333,130 @@ export interface ProgressoDaJornada {
    * curiosidade repetida nunca entra duas vezes (quem garante é o learning).
    */
   aprendidas: readonly string[];
+  /** A afinidade de cada tema: o `porTema` do perfil, a fonte de verdade. */
+  porTema?: Partial<Record<ThemeKey, number>>;
+  /**
+   * Os ids aprendidos de cada tema, na ordem — a MEMÓRIA das especializações
+   * (quem contribuiu). Derivado pela composição do perfil + catálogo; não é salvo.
+   */
+  aprendidasPorTema?: Partial<Record<ThemeKey, readonly string[]>>;
 }
+
+// ---------------------------------------------------------------------
+// A ERA DAS ESPECIALIZAÇÕES
+//
+// As primeiras curiosidades constroem a BASE da civilização (o catálogo
+// acima: cabana, fogueira, casas, evoluções, caminhos). Ao concluir essa fase,
+// a Era das Especializações é desbloqueada: dali em diante, afinidades
+// temáticas poderão criar e evoluir ramos especializados da vila.
+//
+// Não é um degrau do catálogo (não nasce sprite nenhum) e não é estado salvo:
+// é DERIVADA da jornada, que já está no save. Nada para sair de sincronia.
+// ---------------------------------------------------------------------
+
+/** Quantas curiosidades fecham a fase base da civilização. */
+export const FIM_DA_FASE_BASE = 20;
+
+/**
+ * A vila já pode desenvolver especializações temáticas? A fonte única que os
+ * tiers de `ESPECIALIZACOES` consultam (condição `especializacao`), somada à
+ * afinidade do tema.
+ */
+export function especializacoesDesbloqueadas(progresso: ProgressoDaJornada): boolean {
+  return progresso.aprendidas.length >= FIM_DA_FASE_BASE;
+}
+
+/** A era abriu NESTE aprendizado (o último da lista): o fato que vira manchete uma vez só. */
+export function eraAbriuAgora(progresso: ProgressoDaJornada): boolean {
+  return (
+    especializacoesDesbloqueadas(progresso) &&
+    !especializacoesDesbloqueadas({ aprendidas: progresso.aprendidas.slice(0, -1) })
+  );
+}
+
+/** A manchete do mundo quando a era abre. Não é um degrau: nenhuma construção nasce. */
+export const FRASE_DA_ERA = 'Sua vila está pronta para seguir novos caminhos.';
+
+// ---------------------------------------------------------------------
+// AS ESPECIALIZAÇÕES — os ramos temáticos da vila, depois da fase base.
+//
+// Cada ramo é um tema com TIERS em ordem. Cada tier é um degrau comum do motor
+// (`DefinicaoDeMarco`): condição `especializacao` (afinidade do tema) e efeito
+// `criar` ou `evoluir` — o mesmo motor da vila, a mesma memória de origem.
+// Prédios especializados EVOLUEM (tier 1 → tier 2, no mesmo lugar); não se
+// multiplicam. Tema novo (Geologia, Natureza, História…) é um ramo novo aqui.
+//
+// Os limiares são PROVISÓRIOS, para calibrar no playtest.
+// ---------------------------------------------------------------------
+
+export interface RamoDeEspecializacao {
+  tema: ThemeKey;
+  nome: string;
+  /** Em ordem: só o próximo ainda não feito é avaliado a cada aprendizado. */
+  tiers: readonly DefinicaoDeMarco[];
+}
+
+/**
+ * A geografia da Astronomia: céu limpo, longe das casas, aos pés da montanha —
+ * e uma trilha pouco usada até lá. Valores para calibrar.
+ */
+const GEOGRAFIA_DA_ASTRONOMIA: GeografiaDaEspecializacao = {
+  preferencia: {
+    // longe o bastante para ser outra instalação; perto o bastante para a trilha
+    // não atravessar o mapa
+    distanciaDaVila: { minima: 30, maxima: 60 },
+    // aos pés da montanha: a ~6 tiles dela, tolerando uns 8 de diferença
+    perto: { montanha: { ideal: 6, tolerancia: 8, peso: 4 } },
+    // céu aberto: planície e savana; floresta fechada vale pouco
+    terreno: { planicie: 2, savana: 1.8, tundra: 1.2, deserto: 1, floresta: 0.3 },
+  },
+  acesso: {
+    // montanha e neve fora: a trilha contorna o relevo; floresta custa caro
+    custos: { planicie: 4, savana: 4, deserto: 6, tundra: 7, floresta: 12, praia: 24 },
+    curva: 2.4,
+    estagios: [
+      // tier 1: trilha pouco usada
+      { espessura: 0.42, cobertura: 0.52, opacidade: 0.64 },
+      // tier 2: trilha estabelecida — ainda mais fina que os caminhos da vila
+      { espessura: 0.5, cobertura: 0.68, opacidade: 0.76 },
+    ],
+  },
+};
+
+export const ESPECIALIZACOES: readonly RamoDeEspecializacao[] = [
+  {
+    tema: 'astronomia',
+    nome: 'Astronomia',
+    tiers: [
+      {
+        id: 'astronomia-tier-1',
+        categoria: 'marco-tematico',
+        condicao: { tipo: 'especializacao', tema: 'astronomia', afinidade: 5 },
+        efeito: { tipo: 'criar', sprite: 'telescopio', lugar: 'especializado', geografia: GEOGRAFIA_DA_ASTRONOMIA },
+        unico: true,
+        nome: 'Telescópio',
+        frase: 'Um ponto de observação surgiu no seu mundo.',
+        historia: 'Seus estudos sobre o céu começaram aqui, com um pequeno telescópio.',
+      },
+      {
+        id: 'astronomia-tier-2',
+        categoria: 'evolucao',
+        condicao: { tipo: 'especializacao', tema: 'astronomia', afinidade: 10 },
+        efeito: {
+          tipo: 'evoluir',
+          de: 'telescopio',
+          para: 'posto_de_observacao',
+          alvo: { tipo: 'criadaPor', marco: 'astronomia-tier-1' },
+        },
+        unico: true,
+        nome: 'Posto de observação',
+        frase: 'O ponto de observação cresceu.',
+        historia:
+          'Seus estudos sobre o céu começaram aqui com um pequeno telescópio. Novas descobertas fizeram o lugar crescer.',
+      },
+    ],
+  },
+];
 
 /** Um degrau que a jornada alcançou e ainda não aconteceu, com a origem já montada. */
 export interface MarcoAlcancado {
@@ -274,7 +464,7 @@ export interface MarcoAlcancado {
   origem: OrigemDoMarco;
 }
 
-/** A condição foi cumprida? Devolve quem a cumpriu (em ordem), ou null. */
+/** A condição foi cumprida? Devolve quem a cumpriu (em ordem; o último é o gatilho), ou null. */
 function alcancou(condicao: CondicaoDeMarco, progresso: ProgressoDaJornada): string[] | null {
   switch (condicao.tipo) {
     case 'totalAprendido':
@@ -284,7 +474,35 @@ function alcancou(condicao: CondicaoDeMarco, progresso: ProgressoDaJornada): str
       return progresso.aprendidas.length >= condicao.quantidade
         ? progresso.aprendidas.slice(0, condicao.quantidade)
         : null;
+    case 'especializacao': {
+      const doTema = progresso.aprendidasPorTema?.[condicao.tema] ?? [];
+      const afinidade = progresso.porTema?.[condicao.tema] ?? doTema.length;
+      const agora = progresso.aprendidas[progresso.aprendidas.length - 1];
+      // a era já estava aberta ANTES deste aprendizado: chegar a 20 não constrói nada
+      const eraAntes = especializacoesDesbloqueadas({ aprendidas: progresso.aprendidas.slice(0, -1) });
+      // quem dispara é uma curiosidade DO TEMA, aprendida agora
+      if (!eraAntes || afinidade < condicao.afinidade || agora === undefined || !doTema.includes(agora)) {
+        return null;
+      }
+      // as do tema até aqui (a de agora é a última: o gatilho)
+      return [...doTema.slice(0, doTema.indexOf(agora)), agora];
+    }
   }
+}
+
+/**
+ * Quantos tiers de cada ramo ainda não aconteceram neste mundo (temas sem
+ * nenhum pendente ficam de fora). Para o simulador da jornada (modo dev): cada
+ * tier pede uma curiosidade do tema aprendida depois da fase base.
+ */
+export function tiersPendentes(crescimento: readonly GrowthElement[]): Partial<Record<ThemeKey, number>> {
+  const feitos = degrausQueJaAconteceram(crescimento);
+  const pendentes: Partial<Record<ThemeKey, number>> = {};
+  for (const ramo of ESPECIALIZACOES) {
+    const n = ramo.tiers.filter((t) => !feitos.has(t.id)).length;
+    if (n > 0) pendentes[ramo.tema] = n;
+  }
+  return pendentes;
 }
 
 /** Todo degrau que já aconteceu neste mundo: as criações e as evoluções. */
@@ -313,14 +531,20 @@ export function marcosPendentes(
 ): MarcoAlcancado[] {
   const aconteceu = quemJaAconteceu(crescimento, settlements);
   const pendentes: MarcoAlcancado[] = [];
-  for (const definicao of MARCOS) {
-    if (aconteceu(definicao)) continue;
+  const avaliar = (definicao: DefinicaoDeMarco) => {
     const contribuintes = alcancou(definicao.condicao, progresso);
-    if (!contribuintes) continue;
+    if (!contribuintes) return;
     pendentes.push({
       definicao,
       origem: { id: definicao.id, gatilho: contribuintes[contribuintes.length - 1], contribuintes },
     });
+  };
+  for (const definicao of MARCOS) if (!aconteceu(definicao)) avaliar(definicao);
+  // Especializações: de cada ramo, só o PRÓXIMO tier — um aprendizado avança no
+  // máximo um estágio, mesmo com afinidade sobrando para os dois.
+  for (const ramo of ESPECIALIZACOES) {
+    const proximo = ramo.tiers.find((tier) => !aconteceu(tier));
+    if (proximo) avaliar(proximo);
   }
   return pendentes;
 }
@@ -354,6 +578,7 @@ export interface EtapaDaJornada {
 export function etapasDaJornada(): EtapaDaJornada[] {
   const etapas = new Map<number, DefinicaoDeMarco[]>();
   for (const definicao of MARCOS) {
+    if (definicao.condicao.tipo !== 'totalAprendido') continue;
     const n = definicao.condicao.quantidade;
     etapas.set(n, [...(etapas.get(n) ?? []), definicao]);
   }
@@ -362,7 +587,37 @@ export function etapasDaJornada(): EtapaDaJornada[] {
 
 /** A definição de um degrau pelo id (do catálogo, ou do legado). `null` se ninguém o conhece. */
 export function definicaoDoMarco(id: MarcoId): DefinicaoDeMarco | null {
-  return MARCOS.find((m) => m.id === id) ?? LEGADO.find((m) => m.id === id) ?? null;
+  return (
+    MARCOS.find((m) => m.id === id) ??
+    ESPECIALIZACOES.flatMap((r) => r.tiers).find((m) => m.id === id) ??
+    LEGADO.find((m) => m.id === id) ??
+    null
+  );
+}
+
+/**
+ * Todos os tipos que a construção criada por `marcoId` vai ter ao longo da vida:
+ * o de agora e os das evoluções do catálogo que a pegam pela identidade
+ * (`criadaPor`). É o que a reserva de espaço usa: quem nasce já guarda lugar
+ * para crescer, e o tier 2 nunca fica sem espaço por causa do tier 1.
+ */
+export function linhagemDaConstrucao(marcoId: MarcoId, sprite: SpriteKey): SpriteKey[] {
+  const todos = [...MARCOS, ...ESPECIALIZACOES.flatMap((r) => r.tiers)];
+  const futuros = todos.flatMap((d) =>
+    d.efeito.tipo === 'evoluir' && d.efeito.alvo.tipo === 'criadaPor' && d.efeito.alvo.marco === marcoId
+      ? [d.efeito.para]
+      : [],
+  );
+  return [sprite, ...futuros];
+}
+
+/**
+ * A geografia da especialização que criou esta construção (onde nasce, como se
+ * chega), ou null se ela não é especializada. A identidade é o degrau da criação.
+ */
+export function geografiaDaConstrucao(elemento: GrowthElement): GeografiaDaEspecializacao | null {
+  const definicao = elemento.marco ? definicaoDoMarco(elemento.marco.id) : null;
+  return definicao?.efeito.tipo === 'criar' ? (definicao.efeito.geografia ?? null) : null;
 }
 
 /** Um acontecimento da vida de uma construção, com a definição que o explica. */

@@ -9,6 +9,7 @@
 // do que recebe. Indexada por WorldGrowthKind (não usa ThemeKey).
 // =====================================================================
 import { footprintEmTerrenoValido, tipoConstruivel } from './buildable';
+import type { PreferenciaGeografica } from './marcos';
 import { centroVisual, construcoesSeTocam, retanguloDe, retanguloTocaCirculo } from './footprint';
 import { tilesDeCaminho } from './paths';
 import { ESCALA_MUNDO, H, W } from './rules';
@@ -64,6 +65,8 @@ const DISTANCIA_MINIMA_SPRITE: Partial<Record<SpriteKey, number>> = {
   fonte: 2,
   cabana: 2.2,
   fogueira: 1.6,
+  telescopio: 3,
+  posto_de_observacao: 3.5,
   mina: 4,
   observatorio: 5,
 };
@@ -473,15 +476,24 @@ export function colocarCrescimento(
  * - `fundaVila` / `anelDasCasas`: no anel das casas pequenas.
  * - `anelDasMaiores`: no anel das casas maiores, logo fora da praça.
  * - `centroDaVila`: o mais perto possível do centro, dentro da praça reservada.
+ * - `periferiaDaVila`: um anel além das casas (`colocarNaPeriferia`).
+ * - `especializado`: pela `preferencia` geográfica (`colocarComPreferencia`).
  */
 export function colocarMarco(
   mundo: World,
   ocupantes: readonly WorldOccupant[],
   sprite: SpriteKey,
-  lugar: 'fundaVila' | 'centroDaVila' | 'anelDasCasas' | 'anelDasMaiores',
+  lugar: 'fundaVila' | 'centroDaVila' | 'anelDasCasas' | 'anelDasMaiores' | 'periferiaDaVila' | 'especializado',
   assentamento: Settlement,
   rng: Rng,
+  preferencia?: PreferenciaGeografica,
 ): { x: number; y: number } | null {
+  if (lugar === 'especializado' && preferencia) {
+    return colocarComPreferencia(mundo, ocupantes, sprite, assentamento, preferencia, rng);
+  }
+  if (lugar === 'periferiaDaVila' || lugar === 'especializado') {
+    return colocarNaPeriferia(mundo, ocupantes, sprite, assentamento, rng);
+  }
   const noCentro = lugar === 'centroDaVila';
   const construcao = lugar === 'anelDasMaiores' ? 'casa_maior' : 'casa';
   const anel = noCentro ? { ideal: 0, tolerancia: 1 } : anelIdeal(assentamento, construcao);
@@ -502,6 +514,113 @@ export function colocarMarco(
         anel,
         raioDisco: noCentro ? MARGEM_PRACA_ANTES_DA_FONTE + 2 : raioDeAmostragem(assentamento, anel),
       },
+      pesoCentro: 0,
+    },
+    rng,
+  );
+  return achado && { x: achado.x, y: achado.y };
+}
+
+/**
+ * Onde nasce uma construção ESPECIALIZADA: pela preferência geográfica que o
+ * ramo declarou (marcos.ts) — nada aqui sabe de Astronomia. Fallback
+ * progressivo, para o marco nunca sumir num mapa sem a configuração perfeita:
+ *
+ *   1. a preferência inteira (faixa de distância + montanha + terreno);
+ *   2. só a distância, numa faixa mais larga (a periferia distante);
+ *   3. a periferia da vila, logo além das casas — qualquer lugar seguro fora do núcleo.
+ *
+ * Todas as tentativas são o `procurarLugar` de sempre: terreno firme e longe da
+ * água (footprint), fora da praça e da rua, sem colidir. Determinístico pelo rng
+ * da execução (semente do mundo + sequência).
+ */
+function colocarComPreferencia(
+  mundo: World,
+  ocupantes: readonly WorldOccupant[],
+  sprite: SpriteKey,
+  assentamento: Settlement,
+  preferencia: PreferenciaGeografica,
+  rng: Rng,
+): { x: number; y: number } | null {
+  const { minima, maxima } = preferencia.distanciaDaVila;
+  const tentativas: { minima: number; maxima: number; montanha: boolean }[] = [
+    { minima, maxima, montanha: true },
+    { minima: minima * 0.6, maxima: maxima * 1.5, montanha: false },
+  ];
+  for (const t of tentativas) {
+    const achado = procurarLugar(
+      mundo,
+      ocupantes,
+      {
+        evento: 'desenvolverObservacao',
+        regra: {
+          pontuar: (c) => notaGeografica(c, preferencia, t.minima, t.maxima, t.montanha),
+          sprite: () => sprite,
+        },
+        // o disco de sorteio cobre a faixa inteira (raio em tiles)
+        vila: { assentamento, anel: { ideal: 0, tolerancia: 1 }, raioDisco: t.maxima * 1.15 },
+        pesoCentro: 0,
+      },
+      rng,
+    );
+    if (achado) return { x: achado.x, y: achado.y };
+  }
+  return colocarNaPeriferia(mundo, ocupantes, sprite, assentamento, rng);
+}
+
+/** Quanto a nota cai por tile além da distância máxima ideal. */
+const QUEDA_ALEM_DA_MAXIMA = 0.12;
+
+/**
+ * A nota de um lugar pela preferência geográfica. Distâncias em TILES (o
+ * candidato as traz em unidades). null = recusado.
+ */
+function notaGeografica(
+  c: Candidato,
+  preferencia: PreferenciaGeografica,
+  minima: number,
+  maxima: number,
+  comMontanha: boolean,
+): number | null {
+  if (!tipoConstruivel(c.tipo) || !c.vila) return null;
+  const daVila = c.vila.distancia * ESCALA_MUNDO;
+  if (daVila < minima) return null; // não se amontoa com as casas
+  let nota = (preferencia.terreno[c.tipo] ?? 0) - Math.max(0, daVila - maxima) * QUEDA_ALEM_DA_MAXIMA;
+  const montanha = preferencia.perto?.montanha;
+  if (comMontanha && montanha) {
+    const ateMontanha = c.distMont * ESCALA_MUNDO;
+    nota += montanha.peso * Math.max(0, 1 - Math.abs(ateMontanha - montanha.ideal) / montanha.tolerancia);
+  }
+  return nota;
+}
+
+/** Quantas unidades a periferia fica além do anel das casas. */
+const ALEM_DAS_CASAS = 3;
+
+/**
+ * A periferia da vila: um anel além das casas, fora do centro, sem colisão. É o
+ * último recurso das especializações, quando nenhuma faixa da preferência
+ * geográfica tem lugar (`colocarComPreferencia`).
+ */
+function colocarNaPeriferia(
+  mundo: World,
+  ocupantes: readonly WorldOccupant[],
+  sprite: SpriteKey,
+  assentamento: Settlement,
+  rng: Rng,
+): { x: number; y: number } | null {
+  const casas = anelIdeal(assentamento, 'casa');
+  const anel = { ideal: casas.ideal + ALEM_DAS_CASAS, tolerancia: casas.tolerancia };
+  const achado = procurarLugar(
+    mundo,
+    ocupantes,
+    {
+      evento: 'desenvolverObservacao',
+      regra: {
+        pontuar: (c) => (tipoConstruivel(c.tipo) && c.vila ? notaRadial(c.vila.distancia, anel) : null),
+        sprite: () => sprite,
+      },
+      vila: { assentamento, anel, raioDisco: raioDeAmostragem(assentamento, anel) },
       pesoCentro: 0,
     },
     rng,

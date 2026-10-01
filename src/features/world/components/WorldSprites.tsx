@@ -22,6 +22,7 @@ function obterBuffer(cache: Map<string, Buffer>, el: RenderElement): Buffer | nu
   if (guardada) return guardada;
 
   const sprite = construirSprite(el.tipo);
+  if (!sprite) return null; // sem PNG e sem desenho de reserva: não desenha
   const imagem = Skia.Image.MakeImage(
     { width: sprite.largura, height: sprite.altura, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul },
     Skia.Data.fromBytes(sprite.pixels),

@@ -19,6 +19,8 @@ export function useSpriteImages(): Record<ImagemKey, SkImage | null> {
     fonte: useImage(IMAGENS.fonte),
     cabana: useImage(IMAGENS.cabana),
     fogueira: useImage(IMAGENS.fogueira),
+    telescopy_tier1: useImage(IMAGENS.telescopy_tier1),
+    telescopy_tier2: useImage(IMAGENS.telescopy_tier2),
     casa: useImage(IMAGENS.casa),
     casa_frente_v1: useImage(IMAGENS.casa_frente_v1),
     casa_tras_v1: useImage(IMAGENS.casa_tras_v1),

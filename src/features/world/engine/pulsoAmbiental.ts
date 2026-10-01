@@ -66,7 +66,7 @@ const ORDEM: readonly AssuntoDoMundo[] = [
 ];
 
 const CONSTRUCOES: readonly SpriteKey[] = [
-  'casa', 'casa_maior', 'fonte', 'cabana', 'fogueira', 'observatorio', 'mina',
+  'casa', 'casa_maior', 'fonte', 'cabana', 'fogueira', 'observatorio', 'telescopio', 'posto_de_observacao', 'mina',
 ];
 const NATURAIS: readonly SpriteKey[] = ['arvore', 'pinheiro', 'cacto', 'acacia', 'pedra', 'arbusto'];
 
@@ -82,7 +82,7 @@ export function assuntosPresentes(mundo: WorldSnapshot): AssuntoDoMundo[] {
   const construido = CONSTRUCOES.some(tem);
 
   const presentes: Record<AssuntoDoMundo, boolean> = {
-    observatorio: tem('observatorio'),
+    observatorio: tem('observatorio') || tem('telescopio') || tem('posto_de_observacao'),
     mina: tem('mina'),
     fonte: tem('fonte') || mundo.settlements.some((vila) => vila.fonte !== undefined),
     caminho: mundo.settlements.some((vila) => vila.caminhos.length > 0),

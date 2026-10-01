@@ -27,6 +27,8 @@ const CONSTRUCOES: ReadonlySet<SpriteKey> = new Set([
   'fonte',
   'cabana',
   'fogueira',
+  'telescopio',
+  'posto_de_observacao',
   'mina',
   'observatorio',
 ]);

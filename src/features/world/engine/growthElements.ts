@@ -6,9 +6,12 @@
 import { escolherOrientacaoCasa, escolherVariante } from './appearance';
 import { pontoDeEntrada } from './footprint';
 import { cabeEvoluir, colocarCrescimento, colocarFonte, colocarMarco } from './growthPlacement';
-import type { EfeitoDoMarco, LugarDoMarco, MarcoAlcancado } from './marcos';
+import {
+  geografiaDaConstrucao, linhagemDaConstrucao, type EfeitoDoMarco, type LugarDoMarco, type MarcoAlcancado,
+} from './marcos';
+import { FOOTPRINT } from './footprint';
 import { combinarSementes, mulberry32 } from './noise';
-import { conectarARede, criarPraca, mesclarCaminhos, redeDaVila } from './paths';
+import { conectarARede, criarPraca, mesclarCaminhos, redeDaVila, rotaDeAcesso, tilesDeCaminho, tilesDoAcesso } from './paths';
 import {
   VILA,
   assentamentoAlvo,
@@ -17,6 +20,7 @@ import {
   referenciaDaVila,
 } from './settlements';
 import type {
+  AcontecimentoDoMarco,
   GrowthElement,
   GrowthResult,
   Rng,
@@ -192,13 +196,38 @@ const CORACAO: ReadonlySet<SpriteKey> = new Set(['fogueira', 'fonte']);
 /**
  * Refaz a rede de caminhos da vila no nível dela, com as construções de agora.
  * Nível 0 (acampamento): nenhum caminho. Determinístico — mesma vila, mesma rede.
+ *
+ * As construções ESPECIALIZADAS não entram na rede da vila: elas têm a própria
+ * rota de acesso (`vila.acessos`, guardada quando nasceram), que é desenhada
+ * por cima no traço do estágio delas — mais fina e mais lenta que os caminhos
+ * do dia a dia.
  */
 function comRedeRefeita(mundo: World, vila: Settlement, elementos: readonly GrowthElement[]): Settlement {
   const nivel = vila.nivelDosCaminhos ?? 0;
   const daVila = elementos.filter((e) => e.settlementId === vila.id);
   const nucleo = daVila.find((e) => CORACAO.has(e.tipo)) ?? null;
-  const construcoes = daVila.filter((e) => e !== nucleo);
-  return { ...vila, caminhos: redeDaVila(mundo, vila, nucleo, construcoes, elementos.map(comoOcupante), nivel) };
+  const construcoes = daVila.filter((e) => e !== nucleo && !geografiaDaConstrucao(e));
+  const ocupantes = elementos.map(comoOcupante);
+  const residencial = redeDaVila(mundo, vila, nucleo, construcoes, ocupantes, nivel);
+  const naRede = tilesDeCaminho(residencial);
+  const acessos = (vila.acessos ?? []).flatMap((acesso) => {
+    const construcao = elementos.find((e) => e.marco?.id === acesso.construcao);
+    const estagios = construcao && geografiaDaConstrucao(construcao)?.acesso.estagios;
+    if (!construcao || !estagios?.length) return [];
+    // o estágio da construção: a criação, e cada evolução firma um pouco a trilha
+    const estagio = Math.min(estagios.length - 1, construcao.evolucoes?.length ?? 0);
+    return tilesDoAcesso(mundo, acesso.tiles, estagios[estagio], ocupantes, naRede);
+  });
+  return { ...vila, caminhos: [...residencial, ...acessos] };
+}
+
+/**
+ * O sprite de maior espaço no chão entre estes. Os footprints são ancorados no
+ * mesmo pé, centrados, então o retângulo maior cobre o menor.
+ */
+function maiorEspaco(sprites: readonly SpriteKey[]): SpriteKey {
+  const area = (s: SpriteKey) => (FOOTPRINT[s] ? FOOTPRINT[s]!.largura * FOOTPRINT[s]!.altura : 0);
+  return sprites.reduce((maior, s) => (area(s) > area(maior) ? s : maior), sprites[0]);
 }
 
 /** Qual evento cada lugar de criação representa (o `evento` guardado na construção). */
@@ -207,6 +236,8 @@ const EVENTO_DO_LUGAR: Record<LugarDoMarco, WorldGrowthKind> = {
   centroDaVila: 'desenvolverPovoamento',
   anelDasCasas: 'desenvolverPovoamento',
   anelDasMaiores: 'melhorarInfraestrutura',
+  periferiaDaVila: 'desenvolverObservacao',
+  especializado: 'desenvolverObservacao',
 };
 
 /**
@@ -261,6 +292,7 @@ export function aplicarMarcos(
   const evoluidos: GrowthElement[] = [];
   const semLugar: WorldGrowthKind[] = [];
   const avisos: string[] = [];
+  const acontecimentos: AcontecimentoDoMarco[] = [];
   let settlements: Settlement[] = [...settlementsAtuais];
   /** Vilas que mudaram nesta execução: a rede delas é refeita no fim. */
   const mudaram = new Set<string>();
@@ -277,6 +309,7 @@ export function aplicarMarcos(
       settlements = substituir(settlements, { ...vila, nivelDosCaminhos: efeito.nivel });
       mudaram.add(vila.id);
       avisos.push(definicao.frase);
+      acontecimentos.push({ marco: definicao.id });
       continue;
     }
 
@@ -308,6 +341,7 @@ export function aplicarMarcos(
       }
       elementos[elementos.indexOf(alvo)] = evoluido;
       evoluidos.push(evoluido);
+      acontecimentos.push({ marco: definicao.id, elemento: evoluido });
       continue;
     }
 
@@ -325,7 +359,13 @@ export function aplicarMarcos(
     }
 
     const evento = EVENTO_DO_LUGAR[efeito.lugar];
-    const lugar = vila ? colocarMarco(mundo, ocupantes, efeito.sprite, efeito.lugar, vila, rng) : null;
+    // Especializada: procura lugar já com o espaço do MAIOR estágio da linhagem
+    // (o telescópio só nasce onde o posto de observação também caberia). A vila
+    // comum procura com o próprio sprite, como sempre.
+    const espaco = efeito.geografia ? maiorEspaco(linhagemDaConstrucao(origem.id, efeito.sprite)) : efeito.sprite;
+    const lugar = vila
+      ? colocarMarco(mundo, ocupantes, espaco, efeito.lugar, vila, rng, efeito.geografia?.preferencia)
+      : null;
     if (!vila || !lugar) {
       semLugar.push(evento);
       continue; // uma vila recém-escolhida sem o degrau não entra
@@ -345,16 +385,34 @@ export function aplicarMarcos(
     const elemento = comAparencia(base, vila, mundo.seed);
     elementos.push(elemento);
     adicionados.push(elemento);
+    acontecimentos.push({ marco: definicao.id, elemento });
 
     vila = incluirNoAssentamento(vila, elemento.x, elemento.y);
+    // especializada: a rota de acesso própria é calculada AGORA, uma vez, e guardada
+    if (efeito.geografia) {
+      const linha = rotaDeAcesso(
+        mundo,
+        vila,
+        pontoDeEntrada(elemento),
+        [...ocupantes, comoOcupante(elemento)],
+        efeito.geografia.acesso.custos,
+        efeito.geografia.acesso.curva,
+      );
+      if (linha) {
+        const outras = (vila.acessos ?? []).filter((a) => a.construcao !== origem.id);
+        vila = { ...vila, acessos: [...outras, { construcao: origem.id, tiles: linha }] };
+      }
+    }
     settlements = substituir(settlements, vila);
     mudaram.add(vila.id);
   }
 
   // a rede acompanha a vila: refeita por inteiro onde algo mudou
   settlements = settlements.map((s) =>
-    mudaram.has(s.id) && (s.nivelDosCaminhos ?? 0) > 0 ? comRedeRefeita(mundo, s, elementos) : s,
+    mudaram.has(s.id) && ((s.nivelDosCaminhos ?? 0) > 0 || (s.acessos?.length ?? 0) > 0)
+      ? comRedeRefeita(mundo, s, elementos)
+      : s,
   );
 
-  return { elementos, adicionados, evoluidos, avisos, semLugar, settlements };
+  return { elementos, adicionados, evoluidos, avisos, acontecimentos, semLugar, settlements };
 }

@@ -15,6 +15,8 @@ export const INSPECIONAVEIS: ReadonlySet<SpriteKey> = new Set<SpriteKey>([
   'fonte',
   'cabana',
   'fogueira',
+  'telescopio',
+  'posto_de_observacao',
   'mina',
   'observatorio',
 ]);
@@ -26,8 +28,23 @@ export const NOME_DA_CONSTRUCAO: Partial<Record<SpriteKey, string>> = {
   fonte: 'Fonte da vila',
   cabana: 'Cabana',
   fogueira: 'Fogueira',
+  telescopio: 'Ponto de observação',
+  posto_de_observacao: 'Posto de observação',
   mina: 'Mina',
   observatorio: 'Observatório',
+};
+
+/** O gênero do nome acima, para quem monta frase com ele ("um ponto", "uma fonte"). */
+export const ARTIGO_DA_CONSTRUCAO: Partial<Record<SpriteKey, 'o' | 'a'>> = {
+  casa: 'a',
+  casa_maior: 'a',
+  fonte: 'a',
+  cabana: 'a',
+  fogueira: 'a',
+  telescopio: 'o',
+  posto_de_observacao: 'o',
+  mina: 'a',
+  observatorio: 'o',
 };
 
 /**

@@ -1,18 +1,21 @@
 import { useCallback, useState } from 'react';
 
 import {
-  anuncioAtual, concluirAnuncio, estadoInicial, registrarNascimentos, reiniciarConquistas,
+  anuncioAtual, concluirAnuncio, estadoInicial, registrarFatos, reiniciarConquistas,
   type Anuncio,
 } from '../engine/estado';
-import type { AchievementId, Nascidos } from '../engine/regras';
+import type { AchievementId, FatosDaJornada } from '../engine/regras';
 
 export interface Conquistas {
   /** O que a jornada já conquistou. É isto, e só isto, que vai para o save. */
   desbloqueadas: readonly AchievementId[];
   /** O que o banner mostra agora. Efêmero: nunca é salvo. */
   anuncio: Anuncio | null;
-  /** Algo nasceu no mundo — o ponto de verdade é `r.adicionados` do engine. */
-  registrarNascimentos: (nascidos: Nascidos) => void;
+  /**
+   * Algo aconteceu na jornada: nasceu no mundo (o ponto de verdade é
+   * `r.adicionados` do engine) ou a fase base terminou. Repetir um fato não faz nada.
+   */
+  registrarFatos: (fatos: FatosDaJornada) => void;
   /** O banner terminou de sair. */
   concluirAnuncio: (serie: number) => void;
   /** Jornada nova: apaga tudo, inclusive o que estava na fila. */
@@ -32,8 +35,8 @@ export interface Conquistas {
 export function useAchievements(salvas?: readonly unknown[] | null): Conquistas {
   const [estado, setEstado] = useState(() => estadoInicial(salvas));
 
-  const registrar = useCallback((nascidos: Nascidos) => {
-    setEstado((atual) => registrarNascimentos(atual, nascidos));
+  const registrar = useCallback((fatos: FatosDaJornada) => {
+    setEstado((atual) => registrarFatos(atual, fatos));
   }, []);
 
   const concluir = useCallback((serie: number) => {
@@ -45,7 +48,7 @@ export function useAchievements(salvas?: readonly unknown[] | null): Conquistas 
   return {
     desbloqueadas: estado.desbloqueadas,
     anuncio: anuncioAtual(estado),
-    registrarNascimentos: registrar,
+    registrarFatos: registrar,
     concluirAnuncio: concluir,
     reiniciar,
   };

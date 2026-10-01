@@ -1,6 +1,6 @@
 // =====================================================================
 // AS REGRAS DAS CONQUISTAS — o que desbloqueia cada uma.
-// Puro: sem React, sem imagem, sem saber de onde o nascimento veio.
+// Puro: sem React, sem imagem, sem saber de onde os fatos vieram.
 // =====================================================================
 import type { AssuntoDoMundo } from '../../../shared/domain/assunto';
 
@@ -8,7 +8,7 @@ import type { AssuntoDoMundo } from '../../../shared/domain/assunto';
  * Ids estáveis: são eles que vão para o save. Renomear um id é mudar o formato
  * gravado — quem já tinha a conquista a perderia.
  */
-export type AchievementId = 'first-house';
+export type AchievementId = 'first-house' | 'era-das-especializacoes';
 
 /**
  * O que acabou de nascer no mundo, no vocabulário comum (`shared/domain`).
@@ -18,9 +18,21 @@ export type AchievementId = 'first-house';
  */
 export type Nascidos = readonly AssuntoDoMundo[];
 
+/**
+ * O que aconteceu na jornada, no vocabulário das conquistas. Cada campo é um
+ * fato que a composição traduziu de outra feature — `achievements` não importa
+ * `world` nem `learning`. Ausente = não é sobre isso.
+ */
+export interface FatosDaJornada {
+  /** O que acabou de nascer no mundo. */
+  nascidos?: Nascidos;
+  /** A fase base da civilização terminou (world/engine/marcos.ts). */
+  especializacoesDesbloqueadas?: boolean;
+}
+
 interface Regra {
   id: AchievementId;
-  alcancada: (nascidos: Nascidos) => boolean;
+  alcancada: (fatos: FatosDaJornada) => boolean;
 }
 
 /**
@@ -35,7 +47,12 @@ const REGRAS: readonly Regra[] = [
   // `casa` inclui a casa maior: o mundo traduz as duas para o mesmo assunto.
   // "Primeira casa!" é o primeiro abrigo: a cabana (o marco da 1ª curiosidade)
   // ou uma casa, o que nascer primeiro.
-  { id: 'first-house', alcancada: (nascidos) => nascidos.includes('cabana') || nascidos.includes('casa') },
+  {
+    id: 'first-house',
+    alcancada: ({ nascidos = [] }) => nascidos.includes('cabana') || nascidos.includes('casa'),
+  },
+  // A vila amadureceu: a Era das Especializações começou (uma vez por jornada).
+  { id: 'era-das-especializacoes', alcancada: (fatos) => fatos.especializacoesDesbloqueadas === true },
 ];
 
 export const ORDEM_DAS_CONQUISTAS: readonly AchievementId[] = REGRAS.map((regra) => regra.id);
@@ -46,16 +63,17 @@ export function ehAchievementId(valor: unknown): valor is AchievementId {
 }
 
 /**
- * Quais conquistas **novas** este nascimento desbloqueia.
+ * Quais conquistas **novas** estes fatos desbloqueiam.
  *
  * Nunca devolve uma que já estava desbloqueada — é isso que garante "uma vez
- * por jornada" sem precisar de flag nenhuma.
+ * por jornada" sem precisar de flag nenhuma: o mesmo fato chegando de novo
+ * (a 21ª curiosidade, a 22ª…) não faz nada.
  */
 export function conquistasAlcancadas(
-  nascidos: Nascidos,
+  fatos: FatosDaJornada,
   desbloqueadas: readonly AchievementId[],
 ): AchievementId[] {
-  return REGRAS.filter((regra) => !desbloqueadas.includes(regra.id) && regra.alcancada(nascidos)).map(
+  return REGRAS.filter((regra) => !desbloqueadas.includes(regra.id) && regra.alcancada(fatos)).map(
     (regra) => regra.id,
   );
 }

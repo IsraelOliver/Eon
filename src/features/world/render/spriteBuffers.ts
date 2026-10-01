@@ -20,9 +20,11 @@ export interface EstadoDoSprite {
   pergaminho?: boolean;
 }
 
-export function construirSprite(tipo: SpriteKey, estado: EstadoDoSprite = {}): SpriteBuffer {
+/** O sprite em pixels, ou null se o tipo não tem desenho de reserva. */
+export function construirSprite(tipo: SpriteKey, estado: EstadoDoSprite = {}): SpriteBuffer | null {
   const { pergaminho = false } = estado;
   const rows = SPRITES[tipo];
+  if (!rows || rows.length === 0) return null;
   const h = rows.length;
   const w = rows[0].length;
 

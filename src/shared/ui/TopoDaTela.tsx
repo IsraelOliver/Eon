@@ -6,7 +6,7 @@ import { useColors } from '@/shared/theme/colors';
 /** Largura da coluna do botão voltar; a direita repete, e o título fica no centro da tela. */
 const CANTO = 44;
 
-/** O topo das telas cheias de Configurações: ‹ à esquerda, título no centro. */
+/** O topo das telas cheias (Configurações, Seu conhecimento): ‹ à esquerda, título no centro. */
 export function TopoDaTela({ titulo, onVoltar }: { titulo: string; onVoltar: () => void }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
