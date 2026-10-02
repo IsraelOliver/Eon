@@ -10,6 +10,7 @@
 // não cresce quando o mundo cresce. Conta igual à do render (WorldSprites).
 // =====================================================================
 import { emTiles } from './escala';
+import { ESCALA_MUNDO } from './rules';
 import type { SpriteKey } from './types';
 
 export interface BuildingFootprint {
@@ -120,6 +121,63 @@ export function construcoesSeTocam(
     ra.topo - folga < rb.base &&
     rb.topo < ra.base + folga
   );
+}
+
+// ---------------------------------------------------------------------
+// BASE DAS ÁRVORES — o tronco no chão, não a copa.
+//
+// A copa de um carvalho tem ~6 tiles de largura e pode cobrir a da vizinha (é
+// isso que dá cara de mata). O que não pode é um tronco quase em cima do outro,
+// nem um tronco na água. Por isso a árvore não tem footprint de construção: só a
+// base, um quadradinho com a largura do tronco, apoiado no pé do tile.
+// ---------------------------------------------------------------------
+
+/** Largura do tronco de cada árvore, em pixels de arte (medida nos PNGs). */
+const TRONCO_PX: Partial<Record<SpriteKey, number>> = {
+  arvore: 4,
+  pinheiro: 4,
+  acacia: 2,
+  cacto: 2,
+};
+
+/** Os sprites que são árvores (têm base de tronco). */
+export const ARVORES: ReadonlySet<SpriteKey> = new Set(Object.keys(TRONCO_PX) as SpriteKey[]);
+
+/**
+ * Espaço LIVRE mínimo entre as bases de duas árvores, em tiles: 1 unidade do
+ * protótipo (ver ESCALA_MUNDO). Mais = mata mais rala; menos = troncos colados.
+ */
+export const FOLGA_ENTRE_ARVORES = ESCALA_MUNDO;
+
+/** A base (tronco) da árvore no chão, ou null se o sprite não é árvore. */
+export function baseDaArvore(tipo: SpriteKey | undefined, x: number, y: number): Retangulo | null {
+  const px = tipo && TRONCO_PX[tipo];
+  if (!px) return null;
+  const lado = emTiles(px);
+  const meio = x + 0.5;
+  return { esquerda: meio - lado / 2, direita: meio + lado / 2, topo: y + 1 - lado, base: y + 1 };
+}
+
+/** Menor distância entre dois retângulos (0 se se tocam ou cruzam). */
+function distanciaEntreRetangulos(a: Retangulo, b: Retangulo): number {
+  const dx = Math.max(0, a.esquerda - b.direita, b.esquerda - a.direita);
+  const dy = Math.max(0, a.topo - b.base, b.topo - a.base);
+  return Math.hypot(dx, dy);
+}
+
+/**
+ * As bases das duas árvores ficam perto demais (menos de FOLGA_ENTRE_ARVORES de
+ * chão livre entre os troncos)? Devolve null se alguma das duas não é árvore —
+ * aí vale outra regra (construcoesSeTocam ou a distância entre âncoras).
+ */
+export function arvoresSeTocam(
+  a: { tipo?: SpriteKey; x: number; y: number },
+  b: { tipo?: SpriteKey; x: number; y: number },
+): boolean | null {
+  const ba = baseDaArvore(a.tipo, a.x, a.y);
+  const bb = baseDaArvore(b.tipo, b.x, b.y);
+  if (!ba || !bb) return null;
+  return distanciaEntreRetangulos(ba, bb) < FOLGA_ENTRE_ARVORES;
 }
 
 /** O retângulo invade o círculo? (ponto do retângulo mais perto do centro está dentro) */

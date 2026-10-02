@@ -9,6 +9,7 @@ import { montarColecao } from '@/features/achievements/engine/colecao';
 import {
   ORDEM_DAS_CONQUISTAS, proximaNaoVista, type AchievementId,
 } from '@/features/achievements/engine/regras';
+import type { Anuncio } from '@/features/achievements/engine/estado';
 import { useAchievements } from '@/features/achievements/hooks/useAchievements';
 import { KnowledgeButton } from '@/features/knowledge/components/KnowledgeButton';
 import { KnowledgeScreen } from '@/features/knowledge/components/KnowledgeScreen';
@@ -60,6 +61,7 @@ import { ActionBar, type AcaoDaBarra } from '@/shared/ui/ActionBar';
 import { ICONS } from '@/shared/ui/icons';
 import { deslocamentoDoMundo } from '@/shared/ui/navegacao';
 import { useProgressoDaNavegacao } from '@/shared/ui/useNavegacao';
+import type { LugarNoMundo } from '@/shared/domain/lugar';
 
 /** A notícia do primeiro crescimento da jornada, no World Pulse. */
 const FRASE_DO_PRIMEIRO_CRESCIMENTO = 'Algo apareceu no seu mundo.';
@@ -170,6 +172,12 @@ function Jogo({ save, sessao }: { save: SaveData | null; sessao: SessaoDoApp }) 
   const [visaoGeral, setVisaoGeral] = useState(0);
   /** Sobe a cada toque no Discovery já ativo: o feed rola até o topo. */
   const [voltarAoTopo, setVoltarAoTopo] = useState(0);
+  /**
+   * Uma curiosidade está aberta para leitura (aviso do learning). É modo de
+   * leitura: a ActionBar sai enquanto ela estiver à frente. O Discovery não é
+   * desmontado — feed, rolagem e ordem continuam lá embaixo.
+   */
+  const [leituraAberta, setLeituraAberta] = useState(false);
 
   const tela = useWindowDimensions();
   const world = useWorld(save?.world);
@@ -373,7 +381,9 @@ function Jogo({ save, sessao }: { save: SaveData | null; sessao: SessaoDoApp }) 
   const { registrarFatos, reiniciar: reiniciarConquistas } = conquistas;
   useEffect(() => {
     if (!nascimento) return;
-    registrarFatos({ nascidos: nascimento.map(assuntoDeCrescimento) });
+    registrarFatos({
+      nascidos: nascimento.map((e) => ({ assunto: assuntoDeCrescimento(e), x: e.x, y: e.y })),
+    });
     consumirNascimento();
   }, [nascimento, registrarFatos, consumirNascimento]);
 
@@ -386,7 +396,10 @@ function Jogo({ save, sessao }: { save: SaveData | null; sessao: SessaoDoApp }) 
    * nunca guarda um mundo vazio com a conquista antiga, nem o contrário.
    */
   useEffect(() => {
-    if (world.gerando) reiniciarConquistas();
+    if (world.gerando) {
+      reiniciarConquistas();
+      setLugarDaConquista(null); // o lugar era do mundo que saiu
+    }
   }, [world.gerando, reiniciarConquistas]);
 
   /**
@@ -494,6 +507,16 @@ function Jogo({ save, sessao }: { save: SaveData | null; sessao: SessaoDoApp }) 
    * dois — por isso o destaque é consumido logo em seguida e não volta.
    */
   const [novidade, setNovidade] = useState({ id: 0, x: 0, y: 0, titulo: '', subtitulo: '' });
+  /**
+   * Para onde a câmera vai. Separado da `novidade` porque nem todo foco tem
+   * aviso: o "Ver no mundo" de uma conquista só leva a câmera, sem GrowthBanner.
+   */
+  const [focoDoMapa, setFocoDoMapa] = useState({ id: 0, x: 0, y: 0 });
+  /**
+   * O lugar de uma conquista tocada no banner, esperando o Mundo ficar à vista
+   * (Discovery saindo da frente, boas-vindas dispensadas). Estado de tela.
+   */
+  const [lugarDaConquista, setLugarDaConquista] = useState<LugarNoMundo | null>(null);
 
   /**
    * As boas-vindas ao Mundo: uma vez só, na primeira visita depois do primeiro
@@ -513,9 +536,24 @@ function Jogo({ save, sessao }: { save: SaveData | null; sessao: SessaoDoApp }) 
     // a novidade e o aviso aparece, à vista.
     if (!destaque || aprenderAberto || world.gerando || mostrarIntro) return;
     setNovidade((n) => ({ id: n.id + 1, ...destaque }));
+    setFocoDoMapa((f) => ({ id: f.id + 1, x: destaque.x, y: destaque.y }));
     setSelecao(null); // o foco automático assume a cena
     consumirDestaque();
   }, [destaque, aprenderAberto, world.gerando, mostrarIntro, consumirDestaque]);
+
+  /*
+   * "Ver no mundo" de uma conquista: a câmera vai até o lugar dela, nas mesmas
+   * condições do destaque (Mundo à vista, sem recriação, sem boas-vindas na
+   * frente). Vem DEPOIS do efeito do destaque: se os dois chegam juntos (a
+   * primeira casa costuma nascer com o destaque da cabana), quem manda na
+   * câmera é a conquista que a pessoa tocou — e o aviso do destaque continua.
+   */
+  useEffect(() => {
+    if (!lugarDaConquista || aprenderAberto || world.gerando || mostrarIntro) return;
+    setFocoDoMapa((f) => ({ id: f.id + 1, ...lugarDaConquista }));
+    setSelecao(null);
+    setLugarDaConquista(null);
+  }, [lugarDaConquista, aprenderAberto, world.gerando, mostrarIntro]);
 
   /**
    * Construção tocada: só estado de tela, nunca salvo. A ORIGEM dela, sim, é
@@ -571,6 +609,22 @@ function Jogo({ save, sessao }: { save: SaveData | null; sessao: SessaoDoApp }) 
    * pelo mesmo caminho seguro de sempre (fases + liberação das imagens).
    * As conquistas saem junto pelo efeito de `gerando`, que `novoMundo` dispara.
    */
+  /**
+   * Tocou no banner de conquista: vai para o Mundo, de onde estiver — fecha o
+   * Discovery, as Configurações, a coleção e "Seu conhecimento". Com lugar, a
+   * câmera vai até lá (efeito acima); sem lugar (a Era das Especializações), o
+   * Mundo abre na câmera atual. Nunca abre a tela de Conquistas: o impulso,
+   * naquela hora, é ver a mudança no mapa.
+   */
+  const verConquistaNoMundo = useCallback((anuncio: Anuncio) => {
+    setLugarDaConquista(anuncio.lugar ?? null);
+    setSelecao(null);
+    setAprenderAberto(false);
+    setConfigAberto(false);
+    setConquistasAbertas(false);
+    setConhecimentoAberto(false);
+  }, []);
+
   const recomecarJornada = useCallback(() => {
     aprendizado.reiniciar();
     setOnboardingConcluida(false); // jornada nova, boas-vindas de volta
@@ -579,7 +633,7 @@ function Jogo({ save, sessao }: { save: SaveData | null; sessao: SessaoDoApp }) 
 
   /*
    * SIMULAÇÃO DA JORNADA (modo dev). Nenhum atalho: cada passo faz o que o
-   * botão APRENDI faz no Discovery — `aprendizado.aprender` e, se foi
+   * botão "Registrar descoberta" faz no Discovery — `aprendizado.aprender` e, se foi
    * 'aprendida', o mesmo `aoAprender` — e daí em diante é a progressão de
    * sempre: criação, evolução, caminhos, câmera, banner, notícias, World Pulse.
    * A curiosidade segue a ordem do feed desta sessão (determinística, sem
@@ -768,7 +822,7 @@ function Jogo({ save, sessao }: { save: SaveData | null; sessao: SessaoDoApp }) 
             altura={world.altura}
             onLongPress={dev.ativo ? world.inspecionar : undefined}
             despertar={despertarMapa}
-            foco={novidade.id > 0 ? novidade : null}
+            foco={focoDoMapa.id > 0 ? focoDoMapa : null}
             visaoGeral={visaoGeral}
             construcoes={world.construcoes}
             onSelecionar={setSelecao}
@@ -801,6 +855,7 @@ function Jogo({ save, sessao }: { save: SaveData | null; sessao: SessaoDoApp }) 
         pulso={pulso}
         voltarAoTopo={voltarAoTopo}
         ordem={ordemDoFeed}
+        onLeitura={setLeituraAberta}
       />
       <SettingsMenu
         aberto={configAberto}
@@ -834,13 +889,18 @@ function Jogo({ save, sessao }: { save: SaveData | null; sessao: SessaoDoApp }) 
         // abaixo do acesso a "Seu conhecimento", que ocupa o topo do Mundo
         <SimulacaoFlutuante simulador={simulador} topo={insetsDoTopo + 52} />
       )}
-      {/* A barra vale para o app inteiro: fica acima do mundo e do aparelho. */}
-      <ActionBar
-        itens={acoes}
-        ativo={aprenderAberto ? 'discovery' : 'mundo'}
-        // O seletor laranja viaja do Mundo ao Discovery com o MESMO progresso das páginas.
-        seletor={{ progresso: navegacao, de: 'mundo', ate: 'discovery' }}
-      />
+      {/* A barra vale para o app inteiro: fica acima do mundo e do aparelho.
+          Só sai no modo de leitura — e só com o Discovery à frente: uma leitura
+          que ficou aberta por baixo (o toast levou ao Mundo) não tira a barra
+          do Mundo. Ela não guarda estado: o seletor vem do progresso. */}
+      {!(aprenderAberto && leituraAberta) && (
+        <ActionBar
+          itens={acoes}
+          ativo={aprenderAberto ? 'discovery' : 'mundo'}
+          // O seletor laranja viaja do Mundo ao Discovery com o MESMO progresso das páginas.
+          seletor={{ progresso: navegacao, de: 'mundo', ate: 'discovery' }}
+        />
+      )}
 
       {/* A coleção é tela cheia e cobre a barra e as Configurações (de onde é
           aberta): o "voltar" dela fecha só ela e devolve a pessoa para lá. */}
@@ -858,8 +918,12 @@ function Jogo({ save, sessao }: { save: SaveData | null; sessao: SessaoDoApp }) 
       {mostrarIntro && <JourneyIntro onContinuar={() => setOnboardingConcluida(true)} />}
 
       {/* O banner de conquista vem DEPOIS de tudo: fica acima do mundo, do
-          aparelho, das configurações e da apresentação. Não recebe toque. */}
-      <AchievementToast anuncio={conquistas.anuncio} onFim={conquistas.concluirAnuncio} />
+          aparelho, das configurações e da apresentação. Tocar nele leva ao Mundo. */}
+      <AchievementToast
+        anuncio={conquistas.anuncio}
+        onFim={conquistas.concluirAnuncio}
+        onVerNoMundo={verConquistaNoMundo}
+      />
     </View>
   );
 }

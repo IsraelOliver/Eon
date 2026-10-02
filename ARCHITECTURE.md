@@ -27,7 +27,7 @@ src/
         growthElements.ts    → aplicarMarcos() e aplicarEventosDeCrescimento() → GrowthElement[] + vilas
         settlements.ts       → Settlement: núcleo lógico das vilas, zonas, anéis e fonte
         appearance.ts        → orientação (frente/trás) e variante (v1/v2) das residências
-        footprint.ts         → espaço de cada construção no chão (retângulo ancorado na base)
+        footprint.ts         → espaço de cada construção no chão (retângulo ancorado na base) e base do tronco das árvores
         buildable.ts         → terreno construível: solo por tile, margem da água, validação do footprint
         paths.ts             → rede de caminhos: praça, rota (Dijkstra), largura e bordas
       render/                → transforma o mundo em pixels (sem React)
@@ -66,7 +66,7 @@ src/
         LearningScreen.tsx   → a tela: feed + leitura; avisa onAprendido ao registrar
         DiscoveryFeed.tsx    → FlatList com snap: uma descoberta por viewport
         DiscoveryPost.tsx    → o post: fotografia em tela cheia, título e "Ler →"
-        CuriosityReader.tsx  → leitura em tela cheia: conteúdo, fontes, botão APRENDI
+        CuriosityReader.tsx  → leitura em tela cheia: resumo, Aprofundar, pontos, fontes, Registrar descoberta
       presentation/          → decisões de aparência que o engine não pode conhecer
         coverTheme.ts        → capa provisória por tema (cor + símbolo)
         descoberta.ts        → o que ainda falta descobrir (o filtro do feed)
@@ -189,6 +189,7 @@ toque no botão → componente chama função recebida por props
 | Mudar o espaço que uma construção ocupa | `engine/footprint.ts` (`FOOTPRINT`, `FOLGA_ENTRE`) |
 | Mudar o tamanho da praça da fonte      | `engine/settlements.ts` (`RAIO_PRACA`) |
 | Mudar onde se pode construir / margem da água | `engine/buildable.ts` (`SOLO`, `MARGEM_AGUA`) |
+| Mudar o espaço entre troncos de árvores | `engine/footprint.ts` (`FOLGA_ENTRE_ARVORES`, `TRONCO_PX`) |
 | Mudar largura/custo/forma dos caminhos  | `engine/paths.ts` (`LARGURA_CAMINHO`, `CUSTO_TERRENO`) |
 | Mudar a cor/borda da terra batida       | `render/palette.ts` (`CAMINHO`) + `render/pathPixels.ts` |
 | Mudar o tamanho da clareira das construções | `render/renderElements.ts` (`RAIO_CLAREIRA`) |
@@ -210,6 +211,7 @@ toque no botão → componente chama função recebida por props
 | Mudar o formato do save                 | `persistence/save.ts` (`SaveV3`, `VERSAO_DO_SAVE`, `migrarParaAtual`) |
 | Criar uma conquista nova                | `achievements/engine/regras.ts` (regra) + `scripts/gerar-sprite-conquista.ps1` (arte) + `achievements/data/achievements.ts` (texto) |
 | Mudar o banner de conquista             | `achievements/components/AchievementToast.tsx` |
+| Mudar para onde o "Ver no mundo" leva   | `achievements/engine/regras.ts` (`lugar` de cada regra) |
 | Mudar a tela de Conquistas              | `achievements/components/AchievementsScreen.tsx` |
 | Mudar as frases/ordem de "Seu conhecimento" | `knowledge/presentation/resumoDoConhecimento.ts` (`FRASE`, `ASSUNTO_DO_TEMA`, `ORDEM_DOS_TEMAS`) |
 | Mudar a tela "Seu conhecimento"         | `knowledge/components/KnowledgeScreen.tsx` (acesso: `KnowledgeButton.tsx`) |
@@ -234,7 +236,8 @@ toque no botão → componente chama função recebida por props
 | Mudar a capa provisória de um tema      | `learning/presentation/coverTheme.ts` |
 | Mudar a força do degradê do post        | `learning/components/DiscoveryPost.tsx` (`DEGRADE`) |
 | Mudar o chip do tema no post            | `learning/components/DiscoveryPost.tsx` (`chip`) |
-| Mudar a tela de leitura / o botão APRENDI | `learning/components/CuriosityReader.tsx` |
+| Mudar a tela de leitura / o botão Registrar descoberta | `learning/components/CuriosityReader.tsx` |
+| Escrever o resumo ou os pontos principais de uma curiosidade | `learning/data/curiosities.ts` (`resumo`, `pontosPrincipais`) |
 | Mudar o nome de um tema na interface    | `learning/engine/themes.ts` (`NOMES_DE_TEMA`) |
 | Mudar que evento cada influência gera   | `world/engine/growth.ts` (`EVENTO_POR_INFLUENCIA`) |
 | Adicionar um tipo de evento de crescimento | `world/engine/types.ts` (`WorldGrowthKind`) + regra em `growthPlacement.ts` |
@@ -292,12 +295,36 @@ as **Aprendidas** (tela futura), *o que já faz parte da minha jornada*; e o
   `'repetida'` o perfil é o mesmo objeto, então nada muda na tela.
 - **`LearningScreen`** é o conteúdo do aparelho. Qual curiosidade está aberta é
   estado dele — de tela, nunca do save.
-- **`CuriosityReader`** mostra tema, título, conteúdo, **fontes** (com
-  `Linking.openURL` quando têm `url`) e o botão **APRENDI**. Depois do toque
-  aparece "✓ Conhecimento adquirido." — o texto **não fala do mundo**, porque a
-  ligação com o mapa ainda não existe. A prop opcional `onVerMundo` é o gancho
-  para essa etapa: quando a composição passar essa ação, aparece "Ver no mundo".
-  Se a curiosidade já foi aprendida, o botão fica **APRENDIDA** e desabilitado.
+- **`CuriosityReader`** é um modo de leitura em duas camadas:
+
+  ```
+  tema · título
+  EM POUCAS PALAVRAS            resumo ?? preview
+  Aprofundar ↓ / Recolher ↑     o `conteudo`, na própria tela (abre recolhido)
+  O QUE FICA DESSA DESCOBERTA   pontosPrincipais — só se existirem
+  FONTES E VERIFICAÇÃO          as fontes de sempre, mais discretas
+  Registrar descoberta          o mesmo onAprender de antes
+  ```
+
+  - **Resumo sem duplicar texto:** `resumo` é opcional; sem ele vale o
+    `preview` (o mesmo do card). Só se escreve `resumo` quando se quer um texto
+    mais editorial que o do card.
+  - **`pontosPrincipais`** (2 a 4, opcional) são escritos à mão no catálogo;
+    nada é gerado em tempo de execução. Sem eles, a seção não aparece — o
+    catálogo antigo funciona como está. Hoje só a aurora os tem.
+  - **Aprofundar** é um controle secundário (pílula com fio, sem laranja). O
+    texto entra com `FadeIn` curto e o que vem abaixo acompanha com
+    `LinearTransition`. Cada curiosidade abre recolhida (`key` pelo id).
+  - **Registrar descoberta** é só texto novo: chama o mesmo `onAprender` (perfil,
+    mundo, marcos, conquistas, Pulse, save — nada mudou). Depois do toque aparece
+    "✓ Descoberta registrada." com "Ver no mundo" (`onVerMundo`) e "Continuar
+    aprendendo". Já aprendida, o botão fica **Descoberta registrada** e
+    desabilitado.
+  - **Sem ActionBar:** o `LearningScreen` avisa `onLeitura(aberta)` (pelo
+    `LearningOverlay`) e a composição não desenha a barra enquanto o Discovery
+    está à frente com uma leitura aberta. Nada é desmontado: o feed, a rolagem e
+    a ordem continuam lá embaixo, e a barra volta com o "← Voltar". A barra não
+    guarda estado (o seletor sai do progresso), então sair e voltar não perde nada.
 - Os nomes de tema vêm de `learning/engine/themes.ts`, não dos `TEMAS` do mundo:
   `learning` **não importa** `world` (e vice-versa). O que os dois compartilham
   mora em `shared/domain`.
@@ -687,8 +714,9 @@ AppScreen
 - **A barra de ações** (`shared/ui/ActionBar.tsx`) é uma cápsula flutuante
   centralizada na borda de baixo, com dois ícones: a casinha do Mundo e a carta do Discovery. **Ela é a
   única navegação entre as duas telas.** Vale para o app inteiro: é renderizada por último em
-  `app/index.tsx`, acima do mundo, do aparelho e das janelas, e nunca some. Por
-  isso o feed e a leitura reservam `ESPACO_ACTION_BAR` no rodapé. A cápsula não
+  `app/index.tsx`, acima do mundo, do aparelho e das janelas. Só sai no modo de
+  leitura de uma curiosidade (veja `CuriosityReader`). Por isso o feed reserva
+  `ESPACO_ACTION_BAR` no rodapé; a leitura, só a safe area. A cápsula não
   desliza com as páginas; o `ativo` (o destino lógico) serve ao leitor de tela.
 - **UI moderna + micro-ícones em pixel art.** Um ícone em `shared/ui/icons.ts`
   pode ser texto ou uma imagem (a casinha do Mundo, `assets/ui/letter_home`, e a carta do
@@ -1059,11 +1087,12 @@ ao chegar a 20 curiosidades aprendidas (veja "A Era das Especializações").
 ```
 engine de crescimento → r.adicionados
   → useWorld.nascimento           (acumula até ser consumido, como o destaque)
-  → composição: assuntoDeCrescimento()   construção → 'casa' (shared/domain)
+  → composição: assuntoDeCrescimento()   construção → { assunto: 'casa', x, y } (shared/domain)
   → useAchievements.registrarNascimentos()
        ├─ desbloqueadas += first-house   → vai para o save (SaveV3)
-       └─ fila += anúncio                → só na sessão
+       └─ fila += anúncio (+ lugar)      → só na sessão
   → AchievementToast                (desce, espera, sobe, avisa o fim)
+       └─ toque: "Ver no mundo" → Mundo (+ câmera no lugar, se houver)
 ```
 
 - **O ponto de verdade é o engine.** A detecção lê o `r.adicionados` do
@@ -1108,8 +1137,29 @@ antes desta versão existir, e anunciá-la ao abrir seria mentir o momento.
   `zIndex` alto. O app não tem `Modal` nativo, então nada abre numa janela à
   parte capaz de cobri-lo — ele fica acima do mundo, do feed, da leitura, das
   configurações e da apresentação.
-- **Não bloqueia nada** (`pointerEvents="none"`): quem estava lendo ou rolando
-  continua. O VoiceOver ouve "Nova conquista: Primeira casa!".
+- **É um atalho: "Ver no mundo →".** Tocar no cartão leva ao Mundo de onde
+  estiver (fecha Discovery, Configurações, a coleção e "Seu conhecimento") e o
+  banner sobe na hora. A linha "Ver no mundo →" no próprio cartão é o que diz
+  que ele é tocável. Nunca abre a tela de Conquistas: naquele momento o impulso
+  é ver a mudança no mapa; a coleção segue em Configurações.
+- **Conquista com lugar → a câmera vai até lá.** Cada regra pode declarar
+  `lugar(fatos)` (`engine/regras.ts`); o anúncio guarda esse ponto
+  (`Anuncio.lugar`, em tiles — `LugarNoMundo`, de `shared/domain/lugar.ts`)
+  no instante do desbloqueio. Primeira casa: o primeiro abrigo que nasceu (a
+  cabana ou a casa) — como evoluir nunca muda a posição, o ponto continua certo
+  depois. Sem lugar (Era das Especializações), o Mundo abre na câmera atual,
+  sem foco forçado. O lugar é efêmero como o anúncio: nunca vai para o save.
+- **Quando a câmera vai** (`app/index.tsx`): o toque guarda o lugar em
+  `lugarDaConquista` e um efeito o aplica nas mesmas condições do destaque —
+  Mundo à vista, sem recriação, sem boas-vindas na frente. Ele vem depois do
+  efeito do destaque: se os dois chegam juntos, a câmera fica com a conquista
+  tocada e o aviso do destaque continua. A câmera tem um estado próprio
+  (`focoDoMapa`), separado da `novidade` (o GrowthBanner): foco de conquista não
+  mostra aviso. Mundo recriado descarta o lugar pendente.
+- **Só o cartão pega toque** (`pointerEvents="box-none"` na faixa): em volta
+  dele, quem estava lendo ou rolando continua. O VoiceOver ouve "Nova conquista:
+  Primeira casa!" e o cartão é um botão com a dica "Abre o Mundo para ver o que
+  aconteceu".
 - **Sem `setTimeout`:** entrada, espera e saída são uma `withSequence` só, na UI
   thread, e o fim avisa por `runOnJS`. Se o banner for desmontado no meio (jornada
   recomeçada), a animação é cancelada e o fim nunca dispara. Cada anúncio monta
@@ -1603,6 +1653,24 @@ World
   as distâncias mínimas diferem. Medido (elementos por 1000 tiles do bioma):
   floresta 29–53, tundra 8–30, planície 3–6, savana 2–4, deserto 1–3. Nada nasce
   em água, praia, montanha ou neve.
+- **Árvores: tronco em terra firme e troncos separados.** `arvore`, `pinheiro`,
+  `acacia` e `cacto` não têm footprint de construção — a copa pode cobrir a da
+  vizinha, é isso que faz mata. O que conta é a **base do tronco**
+  (`baseDaArvore` em `footprint.ts`: um quadradinho com a largura do tronco,
+  `TRONCO_PX`, apoiado no pé do tile). Duas regras, as mesmas no `nature.ts` e
+  no `procurarLugar` do crescimento:
+  - **terreno:** `footprintEmTerrenoValido` (`buildable.ts`) confere a base como
+    confere o retângulo de uma construção: solo `firme` (nunca água, lago, mar,
+    praia, montanha ou neve) e a pelo menos `MARGEM_AGUA` = 3 da água — como a
+    distância é em passos retos, 3 garante um anel inteiro de terra em volta do
+    tronco, sem água nem na diagonal;
+  - **distância:** `arvoresSeTocam` exige `FOLGA_ENTRE_ARVORES` (1 unidade =
+    `ESCALA_MUNDO` tiles) de chão livre entre uma base e outra. No `nature.ts` a
+    checagem usa uma grade de baldes (`BALDE`) para não varrer o mundo todo.
+  Quem não cumpre é só descartado: as posições continuam as do sorteio, sem grade
+  visível. Medido em 4 seeds: ~45% menos árvores do que antes (os troncos
+  colados eram centenas por mundo), nenhuma base a menos de 3 tiles da água. A
+  copa e a sombra do PNG ainda podem passar por cima da água.
 - **Sprites:** reaproveitam os PNGs de `arvore`, `pinheiro`, `acacia` e `cacto`;
   `pedra` e `arbusto` ainda são desenhos provisórios em caracteres.
 - **`crescerVegetacao` é temporário.** Árvore selvagem virou parte do mundo, então

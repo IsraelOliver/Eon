@@ -193,7 +193,7 @@ export function migrarV1(antigo: SaveV1): SaveV2 {
  * desta versão existir, e anunciá-la ao abrir o app seria mentir o momento.
  */
 export function migrarV2(antigo: SaveV2): SaveV3 {
-  const jaNasceu = antigo.world.crescimento.map(assuntoDeCrescimento);
+  const jaNasceu = antigo.world.crescimento.map((e) => ({ assunto: assuntoDeCrescimento(e), x: e.x, y: e.y }));
   return {
     ...antigo,
     version: 3,

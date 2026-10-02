@@ -2,12 +2,22 @@
 // O ESTADO DAS CONQUISTAS — o que está desbloqueado e o que anunciar agora.
 // Puro: cada função recebe um estado e devolve outro. O hook só os guarda.
 // =====================================================================
-import { conquistasAlcancadas, ehAchievementId, type AchievementId, type FatosDaJornada } from './regras';
+import type { LugarNoMundo } from '../../../shared/domain/lugar';
+
+import {
+  conquistasAlcancadas, ehAchievementId, lugarDaConquista, type AchievementId, type FatosDaJornada,
+} from './regras';
 
 /** Um anúncio na fila do banner. `serie` é única por anúncio, para sempre. */
 export interface Anuncio {
   id: AchievementId;
   serie: number;
+  /**
+   * Onde está o que a conquista celebra, no momento em que ela aconteceu: é para
+   * lá que o "Ver no mundo" leva a câmera. Ausente = só abre o Mundo. Efêmero
+   * como o anúncio — nunca vai para o save.
+   */
+  lugar?: LugarNoMundo;
 }
 
 /**
@@ -54,7 +64,10 @@ export function registrarFatos(estado: EstadoDeConquistas, fatos: FatosDaJornada
   const novas = conquistasAlcancadas(fatos, estado.desbloqueadas);
   if (novas.length === 0) return estado;
 
-  const anuncios = novas.map((id, i) => ({ id, serie: estado.serie + i + 1 }));
+  const anuncios = novas.map((id, i): Anuncio => {
+    const lugar = lugarDaConquista(id, fatos);
+    return lugar ? { id, serie: estado.serie + i + 1, lugar } : { id, serie: estado.serie + i + 1 };
+  });
   return {
     desbloqueadas: [...estado.desbloqueadas, ...novas],
     fila: [...estado.fila, ...anuncios],

@@ -163,6 +163,8 @@ export function gerarMundo(seed: number, nivelMar: number = REGRAS.nivelMar): Wo
     }
   }
 
+  const distAgua = distancia((i) => agua[i] === 1);
+
   return {
     seed,
     nivelMar,
@@ -170,9 +172,9 @@ export function gerarMundo(seed: number, nivelMar: number = REGRAS.nivelMar): Wo
     umi,
     agua,
     tipo,
-    distAgua: distancia((i) => agua[i] === 1),
+    distAgua,
     distMont: distancia((i) => tipo[i] === 'montanha' || tipo[i] === 'neve'),
     centro: calcularCentroHabitavel(tipo),
-    natureza: gerarNatureza(seed, tipo, agua),
+    natureza: gerarNatureza(seed, { tipo, distAgua }),
   };
 }

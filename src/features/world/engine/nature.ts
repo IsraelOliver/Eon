@@ -7,9 +7,11 @@
 // Determinística sem Rng com estado: tudo sai de hash2(x, y, seed), a mesma
 // função que dá textura ao terreno. Mesma seed → mesma natureza.
 // =====================================================================
+import { footprintEmTerrenoValido, type Terreno } from './buildable';
+import { ARVORES, FOLGA_ENTRE_ARVORES, arvoresSeTocam } from './footprint';
 import { fbm, hash2 } from './noise';
 import { ESCALA_MUNDO, H, W } from './rules';
-import type { Biome, NaturalElement, NaturalSpriteKey, TileType } from './types';
+import type { Biome, NaturalElement, NaturalSpriteKey } from './types';
 
 /** Quanto o adensamento varia no espaço: valores baixos = bosques maiores. */
 const FREQUENCIA_ADENSAMENTO = 0.09 / ESCALA_MUNDO;
@@ -61,11 +63,39 @@ function escolherSprite(pesos: ReadonlyArray<readonly [NaturalSpriteKey, number]
 }
 
 /**
+ * Lado do balde da grade de vizinhança, em tiles: cobre a folga entre troncos
+ * mais a largura de um tronco, então basta olhar os 3×3 baldes em volta.
+ */
+const BALDE = Math.ceil(FOLGA_ENTRE_ARVORES + 1);
+
+/**
  * Espalha a decoração natural pelo mundo. Só em tiles de bioma: nunca em água,
  * praia, montanha ou neve.
+ *
+ * Árvores têm duas regras a mais, as mesmas da colocação do crescimento:
+ * - a base do tronco pisa em terreno firme e longe da água (footprintEmTerrenoValido);
+ * - entre um tronco e outro sobra FOLGA_ENTRE_ARVORES de chão (arvoresSeTocam).
+ * Quem não cumpre é só descartado: as posições continuam as do sorteio, sem grade.
  */
-export function gerarNatureza(seed: number, tipo: TileType[], agua: Uint8Array): NaturalElement[] {
+export function gerarNatureza(seed: number, terreno: Terreno): NaturalElement[] {
+  const { tipo, distAgua } = terreno;
   const natureza: NaturalElement[] = [];
+  // árvores já aceitas, por balde, para a checagem de distância não varrer o mundo todo
+  const arvoresPorBalde = new Map<number, NaturalElement[]>();
+  const chaveDoBalde = (bx: number, by: number) => by * W + bx;
+
+  const arvoreColada = (nova: NaturalElement): boolean => {
+    const bx = Math.floor(nova.x / BALDE);
+    const by = Math.floor(nova.y / BALDE);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        for (const vizinha of arvoresPorBalde.get(chaveDoBalde(bx + dx, by + dy)) ?? []) {
+          if (arvoresSeTocam(nova, vizinha)) return true;
+        }
+      }
+    }
+    return false;
+  };
 
   // uma varredura por bioma, cada uma na sua grade: é isso que dá espaçamento próprio
   for (const bioma of BIOMAS) {
@@ -80,12 +110,21 @@ export function gerarNatureza(seed: number, tipo: TileType[], agua: Uint8Array):
         if (x >= W || y >= H) continue;
 
         const i = y * W + x;
-        if (agua[i] || tipo[i] !== bioma) continue;
+        if (distAgua[i] === 0 || tipo[i] !== bioma) continue;
 
         const chance = regra.densidade * adensamento(x, y, seed, regra.agrupamento);
         if (hash2(cx, cy, seed + 313) >= chance) continue;
 
-        natureza.push({ tipo: escolherSprite(regra.sprites, hash2(cx, cy, seed + 419)), x, y });
+        const elemento: NaturalElement = { tipo: escolherSprite(regra.sprites, hash2(cx, cy, seed + 419)), x, y };
+        if (ARVORES.has(elemento.tipo)) {
+          if (!footprintEmTerrenoValido(terreno, elemento.tipo, x, y)) continue; // tronco na água ou na borda
+          if (arvoreColada(elemento)) continue; // tronco quase em cima de outro
+          const chave = chaveDoBalde(Math.floor(x / BALDE), Math.floor(y / BALDE));
+          const balde = arvoresPorBalde.get(chave);
+          if (balde) balde.push(elemento);
+          else arvoresPorBalde.set(chave, [elemento]);
+        }
+        natureza.push(elemento);
       }
     }
   }

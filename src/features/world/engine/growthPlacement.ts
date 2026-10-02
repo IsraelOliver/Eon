@@ -10,7 +10,7 @@
 // =====================================================================
 import { footprintEmTerrenoValido, tipoConstruivel } from './buildable';
 import type { PreferenciaGeografica } from './marcos';
-import { centroVisual, construcoesSeTocam, retanguloDe, retanguloTocaCirculo } from './footprint';
+import { arvoresSeTocam, centroVisual, construcoesSeTocam, retanguloDe, retanguloTocaCirculo } from './footprint';
 import { tilesDeCaminho } from './paths';
 import { ESCALA_MUNDO, H, W } from './rules';
 import {
@@ -47,13 +47,13 @@ const unidades = (tilesDeDistancia: number) => tilesDeDistancia / ESCALA_MUNDO;
 
 /**
  * Espaço que cada SPRITE pede em volta de si. É o que decide o espaçamento
- * visual: árvores quase se encostam, casas formam vila, construções grandes e
- * isoladas pedem mais respiro. Entre dois elementos vale a média das exigências,
+ * visual: casas formam vila, construções grandes e isoladas pedem mais respiro. Entre dois elementos vale a média das exigências,
  * salvo quando o par tem regra própria (DISTANCIA_ENTRE).
  *
  * Entre duas CONSTRUÇÕES (casa, casa maior, fonte) quem decide é o footprint
- * (footprint.ts: retângulo ancorado na base). Estes valores só valem para pares
- * em que um dos lados não tem retângulo (mina, observatório, protótipo).
+ * (footprint.ts: retângulo ancorado na base); entre duas ÁRVORES, a base do
+ * tronco (footprint.ts: arvoresSeTocam). Estes valores só valem para os outros
+ * pares (árvore × construção, mina, observatório, protótipo).
  */
 const DISTANCIA_MINIMA_SPRITE: Partial<Record<SpriteKey, number>> = {
   arvore: 1.4,
@@ -364,7 +364,7 @@ function procurarLugar(
     const sprite = regra.sprite(mundo.tipo[i]);
     if (!sprite) continue;
 
-    // terreno: todo o retângulo da construção em terra firme, longe o bastante da água
+    // terreno: todo o retângulo da construção (ou o tronco da árvore) em terra firme, longe da água
     if (!footprintEmTerrenoValido(mundo, sprite, x, y)) continue;
 
     // praça: restrição dura — nenhuma construção invade a área livre da fonte
@@ -379,9 +379,12 @@ function procurarLugar(
     let bloqueado = false;
     for (const o of ocupantes) {
       const d = unidades(Math.hypot(o.x - x, o.y - y));
-      // construção × construção: retângulos; se um lado não tem, distância entre âncoras
+      // construção × construção: retângulos; árvore × árvore: troncos;
+      // nos outros pares, distância entre âncoras
       const tocam =
-        construcoesSeTocam({ tipo: sprite, x, y }, o) ?? d < distanciaEntre(sprite, evento, o.tipo, o.evento);
+        construcoesSeTocam({ tipo: sprite, x, y }, o) ??
+        arvoresSeTocam({ tipo: sprite, x, y }, o) ??
+        d < distanciaEntre(sprite, evento, o.tipo, o.evento);
       const retanguloDoOutro = minhaPraca ? retanguloDe(o.tipo, o.x, o.y) : null;
       const invadePraca = minhaPraca !== null && retanguloDoOutro !== null && retanguloTocaCirculo(retanguloDoOutro, minhaPraca);
       if (tocam || invadePraca) {

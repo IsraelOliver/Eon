@@ -39,6 +39,11 @@ type Props = {
    */
   ordem?: readonly string[];
   /**
+   * A leitura de uma curiosidade abriu (true) ou fechou (false). A composição
+   * esconde a ActionBar enquanto se lê; o feed continua montado por baixo.
+   */
+  onLeitura?: (aberta: boolean) => void;
+  /**
    * O aparelho está aberto e a tela à vista. A tela fica montada mesmo fechada,
    * então é isto que diz se ela pode mandar na barra de status.
    */
@@ -54,7 +59,7 @@ type Props = {
  */
 export function LearningScreen({
   aprendizado, onAprendido, onVerMundo, pulso = null, onConfiguracoes, voltarAoTopo,
-  visivel = false, ordem,
+  visivel = false, ordem, onLeitura,
 }: Props) {
   const c = useColors();
   const [abertaId, setAbertaId] = useState<CuriosityId | null>(null);
@@ -68,7 +73,7 @@ export function LearningScreen({
   /*
    * O feed congela enquanto a leitura está aberta.
    *
-   * Sem isto, tocar APRENDI reconstruiria a lista por baixo do leitor e, ao
+   * Sem isto, tocar "Registrar descoberta" reconstruiria a lista por baixo do leitor e, ao
    * fechar, o feed apareceria em outra posição — a descoberta seguinte pulando
    * para o lugar da que acabou de sair. Assim a lista só se atualiza quando a
    * pessoa volta para o feed, que é exatamente quando isso não incomoda.
@@ -83,6 +88,12 @@ export function LearningScreen({
     if (abertaId !== null) return;
     setVisiveis(paraDescobrir(ordenadas, aprendizado.perfil));
   }, [abertaId, ordenadas, aprendizado.perfil]);
+
+  // Avisa quem ligou que a leitura abriu ou fechou (é só isso: nada desmonta).
+  const lendo = aberta !== null;
+  useEffect(() => {
+    onLeitura?.(lendo);
+  }, [lendo, onLeitura]);
 
   // O engine registra; aqui só avisamos quem ligou, e só quando houve progresso.
   const aprender = (curiosidade: Curiosity): LearningResult => {
@@ -117,6 +128,8 @@ export function LearningScreen({
 
       {aberta && (
         <CuriosityReader
+          // cada curiosidade abre do jeito dela: resumo à vista, texto recolhido
+          key={aberta.id}
           curiosidade={aberta}
           aprendida={aprendizado.jaAprendeu(aberta.id)}
           onVoltar={() => setAbertaId(null)}

@@ -2,12 +2,16 @@
 // TERRENO CONSTRUÍVEL — onde uma construção pode pisar.
 //
 // A âncora não basta: o sprite ocupa um retângulo (footprint.ts) que sobe a
-// partir dela. Aqui se confere o TERRENO sob esse retângulo inteiro.
+// partir dela. Aqui se confere o TERRENO sob esse retângulo inteiro — ou, para
+// as árvores, sob a base do tronco (baseDaArvore).
 // Medidas em TILES (o PNG não cresce com o mundo).
 // =====================================================================
-import { retanguloDe } from './footprint';
+import { baseDaArvore, retanguloDe } from './footprint';
 import { H, W } from './rules';
 import type { SpriteKey, TileType, World } from './types';
+
+/** O que a checagem de terreno precisa do mundo (a natureza usa antes de o World existir). */
+export type Terreno = Pick<World, 'tipo' | 'distAgua'>;
 
 /**
  * - `firme`: pode ficar sob uma construção.
@@ -43,9 +47,15 @@ export const MARGEM_AGUA: Partial<Record<SpriteKey, number>> = {
   fogueira: 2,
   telescopio: 2,
   posto_de_observacao: 2,
+  // árvores: um anel inteiro de terra em volta do tronco. A distância é em passos
+  // retos (generate.ts), então 2 ainda deixaria a água encostar na diagonal.
+  arvore: 3,
+  pinheiro: 3,
+  acacia: 3,
+  cacto: 3,
 };
 
-export function soloDoTile(mundo: World, x: number, y: number): Solo {
+export function soloDoTile(mundo: Terreno, x: number, y: number): Solo {
   if (x < 0 || y < 0 || x >= W || y >= H) return 'invalido';
   return SOLO[mundo.tipo[y * W + x]];
 }
@@ -56,23 +66,24 @@ export function tipoConstruivel(tipo: TileType): boolean {
 }
 
 /** O tile pode ficar sob uma construção? */
-export function tileConstruivel(mundo: World, x: number, y: number): boolean {
+export function tileConstruivel(mundo: Terreno, x: number, y: number): boolean {
   return soloDoTile(mundo, x, y) === 'firme';
 }
 
 /** Tiles até a água mais próxima (0 = é água). Pré-calculado na geração do mundo. */
-export function distanciaDaAgua(mundo: World, x: number, y: number): number {
+export function distanciaDaAgua(mundo: Terreno, x: number, y: number): number {
   if (x < 0 || y < 0 || x >= W || y >= H) return 0;
   return mundo.distAgua[y * W + x];
 }
 
 /**
- * Todos os tiles tocados pelo retângulo da construção são firmes e estão a pelo
- * menos MARGEM_AGUA da água? Sprites sem footprint (mina, observatório…) passam:
- * para eles vale só a checagem da âncora.
+ * Todos os tiles tocados pelo retângulo da construção (ou pela base da árvore)
+ * são firmes e estão a pelo menos MARGEM_AGUA da água? Firme exclui água, praia,
+ * montanha e neve. Sprites sem footprint nem tronco (mina, observatório, pedra…)
+ * passam: para eles vale só a checagem da âncora.
  */
-export function footprintEmTerrenoValido(mundo: World, tipo: SpriteKey, x: number, y: number): boolean {
-  const r = retanguloDe(tipo, x, y);
+export function footprintEmTerrenoValido(mundo: Terreno, tipo: SpriteKey, x: number, y: number): boolean {
+  const r = retanguloDe(tipo, x, y) ?? baseDaArvore(tipo, x, y);
   if (!r) return true;
   const margem = MARGEM_AGUA[tipo] ?? 1;
   // arredonda para fora: um tile tocado em parte também conta

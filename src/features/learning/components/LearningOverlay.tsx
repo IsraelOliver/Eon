@@ -36,6 +36,8 @@ type Props = {
   voltarAoTopo?: number;
   /** A ordem do feed nesta sessão (ids), decidida pela composição. Só passa adiante. */
   ordem?: readonly string[];
+  /** A leitura de uma curiosidade abriu ou fechou. Só passa adiante. */
+  onLeitura?: (aberta: boolean) => void;
 };
 
 /**
@@ -52,6 +54,7 @@ type Props = {
  */
 export function LearningOverlay({
   aberto, progresso, aprendizado, onFechar, onAprendido, onConfiguracoes, pulso, voltarAoTopo, ordem,
+  onLeitura,
 }: Props) {
   const c = useColors();
   const tela = useWindowDimensions();
@@ -79,6 +82,7 @@ export function LearningOverlay({
         voltarAoTopo={voltarAoTopo}
         ordem={ordem}
         visivel={aberto}
+        onLeitura={onLeitura}
       />
     </Animated.View>
   );

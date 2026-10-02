@@ -21,7 +21,19 @@ export interface Curiosity {
   titulo: string;
   /** Resumo curto (1–2 frases) para listas. */
   preview: string;
+  /**
+   * "Em poucas palavras", no topo da leitura (1–2 parágrafos curtos). Opcional:
+   * sem ele, a leitura usa o `preview` — só preencha quando quiser um texto
+   * mais editorial que o do card, nunca para repetir o preview.
+   */
+  resumo?: string;
+  /** O texto completo, que aparece ao tocar em "Aprofundar". */
   conteudo: string;
+  /**
+   * "O que fica dessa descoberta": de 2 a 4 ideias principais, escritas à mão.
+   * Opcional: sem ele, a seção não aparece. Nunca é gerado em tempo de execução.
+   */
+  pontosPrincipais?: string[];
   tema: ThemeKey;
   tags: Tag[];
   influencias: KnowledgeInfluence[];

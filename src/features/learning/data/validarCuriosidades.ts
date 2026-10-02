@@ -37,6 +37,9 @@ export function validarCuriosidades(
     if (vazio(c.titulo)) problemas.push({ onde, problema: 'título vazio' });
     if (vazio(c.preview)) problemas.push({ onde, problema: 'preview vazio' });
     if (vazio(c.conteudo)) problemas.push({ onde, problema: 'conteúdo vazio' });
+    // Opcionais da leitura: se estiverem lá, sem texto em branco.
+    if (c.resumo !== undefined && vazio(c.resumo)) problemas.push({ onde, problema: 'resumo vazio' });
+    if (c.pontosPrincipais?.some(vazio)) problemas.push({ onde, problema: 'ponto principal vazio' });
     if (c.fontes.length === 0) problemas.push({ onde, problema: 'nenhuma fonte' });
     if (c.fontes.some((f) => vazio(f.titulo))) {
       problemas.push({ onde, problema: 'fonte sem título' });

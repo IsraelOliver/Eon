@@ -12,7 +12,9 @@ import type { Curiosity } from '../engine/types';
  * 1. Coloque a imagem em `assets/curiosities/` (vertical, ~900x1200).
  * 2. Copie o MODELO que está no fim deste arquivo.
  * 3. Crie um `id` único (veja o aviso sobre ids logo abaixo).
- * 4. Preencha `titulo`, `preview` e `conteudo`.
+ * 4. Preencha `titulo`, `preview` e `conteudo`. Opcionais da leitura:
+ *    `resumo` ("Em poucas palavras"; sem ele vale o `preview`) e
+ *    `pontosPrincipais` (2 a 4 ideias; sem eles a seção não aparece).
  * 5. Escolha `tema`, `tags` e `influencias` entre os valores válidos (lista abaixo).
  * 6. Coloque pelo menos uma fonte em `fontes`.
  * 7. Informe `verificadoEm` quando fizer sentido.
@@ -105,6 +107,12 @@ Essas colisões deixam os gases temporariamente em estados de maior energia. Qua
 
 Por isso, uma aurora não é uma nuvem colorida nem luz refletida no céu. É o próprio gás da atmosfera emitindo luz depois de receber energia de partículas vindas do ambiente espacial.
     `.trim(),
+
+    pontosPrincipais: [
+      'A aurora é o próprio gás da alta atmosfera emitindo luz, não uma nuvem nem um reflexo.',
+      'A energia vem de partículas conduzidas pelo campo magnético da Terra até as regiões polares.',
+      'A cor depende do gás: o oxigênio dá tons verdes e vermelhos; o nitrogênio, azulados e arroxeados.',
+    ],
 
     tema: 'astronomia',
 
@@ -1120,6 +1128,15 @@ a tela de leitura respeita os parágrafos.
 
 Terceiro parágrafo.
     `.trim(),
+
+    // opcional: só se o preview não bastar como "Em poucas palavras"
+    resumo: 'Um ou dois parágrafos curtos.',
+
+    // opcional: 2 a 4 ideias para "O que fica dessa descoberta"
+    pontosPrincipais: [
+      'Primeira ideia principal.',
+      'Segunda ideia principal.',
+    ],
 
     tema: 'astronomia',
 

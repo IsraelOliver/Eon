@@ -36,7 +36,7 @@ const MARCA: Record<EtapaDoSimulador['estado'], string> = { feito: '✓', penden
  * SIMULAÇÃO DA JORNADA (modo dev): testar a progressão real, da primeira à
  * última curiosidade do catálogo, sem ler
  * curiosidade por curiosidade. Não cria nada: cada passo é um aprendizado real,
- * pelo mesmo caminho do botão APRENDI.
+ * pelo mesmo caminho do botão "Registrar descoberta".
  */
 export function SimuladorDaJornada({ simulador: s }: { simulador: Simulador }) {
   const c = useColors();

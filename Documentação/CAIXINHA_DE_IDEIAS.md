@@ -227,6 +227,11 @@ desbloqueio de marcos especiais, combinações e conquistas.
 - **Tela de histórico da construção:** a história inteira (criação e cada
   evolução, com quem contribuiu) já fica guardada; falta só a tela.
 - **Conquistas ligadas aos marcos.**
+- **Foco amplo para conquistas sem lugar:** o "Ver no mundo" do banner já leva
+  a câmera até a conquista que tem lugar (a Primeira casa enquadra o primeiro
+  abrigo). As abstratas, como a Era das Especializações, só abrem o Mundo na
+  câmera atual. Ideia: um enquadramento da vila consolidada inteira — basta a
+  regra declarar um `lugar` (o centro da vila) e, se precisar, um zoom.
 - **Afinidade temática sem spam de prédios:** o tema dá o tom da civilização,
   sem encher o mapa de construções repetidas.
 
@@ -376,6 +381,13 @@ permitiria associar certas plantas raras a conhecimentos específicos.
 pedras diferentes, variações de árvore, pequenas formações, detalhes por bioma.
 
 **Princípio:** base limpa com detalhes esparsos. Não encher cada tile de textura.
+
+**Árvores e água (parcial):** o tronco já não nasce na água nem colado na borda,
+e os troncos guardam 1 unidade de distância (ARCHITECTURE.md, "natureza"). A copa
+e a sombra ainda podem passar por cima da água ou da praia. Se incomodar, há dois
+caminhos: aumentar `MARGEM_AGUA` das árvores (simples, deixa a costa mais pelada)
+ou validar o retângulo da copa contra a água (mais fiel, mais caro). Pedras e
+arbustos continuam só com a regra da âncora.
 
 ### Eventos naturais ou descobertas no mapa
 
@@ -795,3 +807,16 @@ muita História
 
 muita Geologia
 → minas, centros de pesquisa, formações expostas
+
+## Leitura
+
+### Resumos e pontos principais para o catálogo inteiro
+
+**Hoje:** a leitura tem duas camadas — "Em poucas palavras" (o `resumo`, ou o
+`preview` quando não há) e o texto completo atrás de "Aprofundar". "O que fica
+dessa descoberta" só aparece com `pontosPrincipais`, e só a aurora os tem.
+
+**Ideia:** escrever, aos poucos, `pontosPrincipais` (2 a 4) para cada curiosidade,
+e `resumo` só onde o `preview` for curto demais para abrir a leitura. Depois,
+talvez: recolher as fontes atrás de um toque, ou lembrar se a pessoa costuma
+aprofundar e abrir já expandido.

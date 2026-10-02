@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { AccessibilityInfo, Image, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { AccessibilityInfo, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming,
 } from 'react-native-reanimated';
@@ -25,6 +25,11 @@ type Props = {
   anuncio: Anuncio | null;
   /** O banner terminou de sair: a composição tira este anúncio da fila. */
   onFim: (serie: number) => void;
+  /**
+   * Tocou no banner: "Ver no mundo". A composição leva ao Mundo e, se o anúncio
+   * tem `lugar`, a câmera vai até lá. O banner sobe na hora, sozinho.
+   */
+  onVerNoMundo: (anuncio: Anuncio) => void;
 };
 
 /**
@@ -34,21 +39,26 @@ type Props = {
  * raiz — e o app não tem `Modal` nativo, então nada abre numa janela à parte
  * que pudesse cobri-lo.
  *
- * Não recebe toque: quem estava lendo, rolando ou mexendo no mapa continua, sem
- * precisar fechar nada.
+ * É um atalho: tocar nele leva ao Mundo para ver o que aconteceu (o "Ver no
+ * mundo →" escrito no próprio cartão avisa que dá para tocar). Só o cartão
+ * recebe toque — em volta dele, quem estava lendo, rolando ou mexendo no mapa
+ * continua, sem precisar fechar nada. Não abre a tela de Conquistas: naquele
+ * momento o impulso é ver a mudança no mapa.
  */
-export function AchievementToast({ anuncio, onFim }: Props) {
+export function AchievementToast({ anuncio, onFim, onVerNoMundo }: Props) {
   if (!anuncio) return null;
   // `key` por anúncio: cada conquista monta um banner novo, e a animação é só
   // "do nascimento ao fim" — sem estado de reinício para gerenciar.
-  return <Faixa key={anuncio.serie} anuncio={anuncio} onFim={onFim} />;
+  return <Faixa key={anuncio.serie} anuncio={anuncio} onFim={onFim} onVerNoMundo={onVerNoMundo} />;
 }
 
-function Faixa({ anuncio, onFim }: { anuncio: Anuncio; onFim: (serie: number) => void }) {
+function Faixa({ anuncio, onFim, onVerNoMundo }: { anuncio: Anuncio } & Omit<Props, 'anuncio'>) {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const conquista = CONQUISTAS[anuncio.id];
   const deslocamento = useSharedValue(-(insets.top + FORA_DA_TELA));
+  /** Um toque só: o segundo, enquanto o banner sobe, não navega de novo. */
+  const tocado = useRef(false);
 
   useEffect(() => {
     AccessibilityInfo.announceForAccessibility(`Nova conquista: ${conquista.titulo}`);
@@ -78,16 +88,36 @@ function Faixa({ anuncio, onFim }: { anuncio: Anuncio; onFim: (serie: number) =>
     transform: [{ translateY: deslocamento.value }],
   }));
 
+  /*
+   * Tocou: avisa a composição e sobe já, sem esperar o tempo de leitura. A
+   * saída substitui a sequência em curso — e é ela, terminando, que tira o
+   * anúncio da fila, pelo mesmo `onFim` de sempre.
+   */
+  const verNoMundo = () => {
+    if (tocado.current) return;
+    tocado.current = true;
+    onVerNoMundo(anuncio);
+    const serie = anuncio.serie;
+    deslocamento.set(
+      withTiming(-(insets.top + FORA_DA_TELA), { duration: SAIDA_MS, easing: Easing.in(Easing.cubic) }, (terminou) => {
+        'worklet';
+        if (terminou) runOnJS(onFim)(serie);
+      }),
+    );
+  };
+
   return (
-    <Animated.View
-      pointerEvents="none"
-      accessibilityRole="alert"
-      style={[styles.faixa, { top: insets.top + MARGEM }, movimento]}
-    >
-      <View
-        style={[
+    // `box-none`: a faixa ocupa a largura toda, mas só o cartão pega o toque.
+    <Animated.View pointerEvents="box-none" style={[styles.faixa, { top: insets.top + MARGEM }, movimento]}>
+      <Pressable
+        onPress={verNoMundo}
+        accessibilityRole="button"
+        accessibilityLabel={`Nova conquista: ${conquista.titulo}. ${conquista.descricao}`}
+        accessibilityHint="Abre o Mundo para ver o que aconteceu"
+        style={({ pressed }) => [
           styles.cartao,
           { backgroundColor: c.panel, borderColor: comAlfa(c.accent, 0.55), shadowColor: c.accent },
+          pressed && styles.pressionado,
         ]}
       >
         {/* Recorte arredondado, como uma miniatura. A arte é exibida no tamanho
@@ -110,8 +140,9 @@ function Faixa({ anuncio, onFim }: { anuncio: Anuncio; onFim: (serie: number) =>
           <Text style={[styles.descricao, { color: c.muted }]} numberOfLines={2}>
             {conquista.descricao}
           </Text>
+          <Text style={[styles.acao, { color: c.accentLegivel }]}>Ver no mundo →</Text>
         </View>
-      </View>
+      </Pressable>
     </Animated.View>
   );
 }
@@ -155,4 +186,6 @@ const styles = StyleSheet.create({
   rotulo: { fontSize: 11, fontWeight: '800', letterSpacing: 1.4 },
   titulo: { fontSize: 19, fontWeight: '800', letterSpacing: -0.2 },
   descricao: { fontSize: 13, lineHeight: 17 },
+  acao: { fontSize: 13, fontWeight: '700', marginTop: 4 },
+  pressionado: { opacity: 0.85, transform: [{ scale: 0.98 }] },
 });
