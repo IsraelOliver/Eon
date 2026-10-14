@@ -98,32 +98,21 @@ O usuário pode acompanhar a vila crescendo, tocar nas construções, observar c
       <br/><br/>
       <sub>Visão do mundo procedural e da civilização.</sub>
       <br/><br/>
-      <code>docs/screenshots/world.png</code>
     </td>
     <td align="center" width="50%">
       <h3>✨ Discovery</h3>
       <br/>
       <strong>
         <p align="center">
-          <img src="./docs/screenshots/discovery.PNG" width="45%" alt="Discovery do Éon" />
+          <img src="./Documentacao/screenshots/discovery.PNG" width="45%" alt="Discovery do Éon" />
         </p>
       </strong>
       <br/><br/>
       <sub>Feed de descobertas ou tela de leitura.</sub>
       <br/><br/>
-      <code>docs/screenshots/discovery.png</code>
     </td>
   </tr>
 </table>
-
-<!--
-Quando os prints estiverem prontos, você pode substituir a tabela acima por:
-
-<p align="center">
-  <img src="./docs/screenshots/world.png" width="45%" alt="Mundo do Éon" />
-  <img src="./docs/screenshots/discovery.png" width="45%" alt="Discovery do Éon" />
-</p>
--->
 
 ---
 
