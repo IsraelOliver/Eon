@@ -93,7 +93,7 @@ O usuário pode acompanhar a vila crescendo, tocar nas construções, observar c
       <br/>
       <strong>
         <p align="center">
-          <img src="./Documentacao/screenshots/world.png" width="45%" alt="Mundo do Éon" />
+          <img src="./Documentacao/screenshots/world.PNG" width="45%" alt="Mundo do Éon" />
         </p></strong>
       <br/><br/>
       <sub>Visão do mundo procedural e da civilização.</sub>
@@ -103,7 +103,11 @@ O usuário pode acompanhar a vila crescendo, tocar nas construções, observar c
     <td align="center" width="50%">
       <h3>✨ Discovery</h3>
       <br/>
-      <strong>PRINT 02</strong>
+      <strong>
+        <p align="center">
+          <img src="./docs/screenshots/discovery.PNG" width="45%" alt="Discovery do Éon" />
+        </p>
+      </strong>
       <br/><br/>
       <sub>Feed de descobertas ou tela de leitura.</sub>
       <br/><br/>
